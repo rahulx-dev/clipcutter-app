@@ -79,6 +79,56 @@ async def upload_project(
     return project.to_dict()
 
 
+@router.post("/{project_id}/upload-fallback")
+async def upload_fallback_to_project(
+    project_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fallback upload directly to an existing project if YouTube download was blocked.
+    Preserves project settings, sets status to PENDING, and readies project for caption design selection.
+    """
+    os.makedirs(settings.TEMP_DIR, exist_ok=True)
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project or (project.user_id != current_user.id and not current_user.is_admin):
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    filename = file.filename or "video.mp4"
+    ext = os.path.splitext(filename)[1].lower()
+    ALLOWED_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4v", ".flv", ".wmv", ".ts", ".3gp", ".m2ts"}
+
+    is_valid_ext = ext in ALLOWED_EXTENSIONS
+    is_valid_mime = bool(file.content_type and (
+        file.content_type.startswith("video/") or 
+        file.content_type in ["application/octet-stream", "application/x-mpegURL", "binary/octet-stream"]
+    ))
+
+    if not (is_valid_ext or is_valid_mime):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported file format '{ext or file.content_type}'. Please upload an MP4, MOV, WebM, or MKV video."
+        )
+
+    upload_res = await save_uploaded_file(file, settings.TEMP_DIR)
+    meta = probe_video(upload_res["file_path"])
+
+    project.source_file_path = upload_res["file_path"]
+    project.source_type = SourceType.UPLOAD
+    project.duration_seconds = meta.get("duration", 0.0)
+    project.video_metadata = meta
+    project.status = ProjectStatus.PENDING
+    project.error_message = None
+    project.progress = 0.0
+    project.progress_message = "File uploaded & inspected — ready to select caption design"
+
+    await db.commit()
+    await db.refresh(project)
+    return project.to_dict()
+
+
 async def _background_download(url: str, project_id: int):
     """Background task to download YouTube video and probe metadata, preparing project for user template selection."""
     try:

@@ -5,7 +5,7 @@ import {
   Play, Pause, Download, Share2, Sparkles, CheckCircle, RefreshCw, 
   ArrowLeft, FileText, Sliders, Zap, ShieldCheck, Flame, MessageSquare, 
   HelpCircle, ChevronRight, Layers, Award, Copy, Check, TrendingUp, AlertTriangle,
-  XCircle, Trash2, Home, Upload
+  XCircle, Trash2, Home, Upload, Loader
 } from 'lucide-react';
 import { useAuth } from '../App';
 import CaptionStylePicker from './CaptionStylePicker';
@@ -32,7 +32,10 @@ export default function ClipEditor() {
   const [downloading, setDownloading] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState(false);
   const [isUploaderOpen, setIsUploaderOpen] = useState(false);
+  const [fallbackUploading, setFallbackUploading] = useState(false);
+  const [fallbackProgress, setFallbackProgress] = useState(0);
 
+  const fileInputRef = useRef(null);
   const isCancelledRef = useRef(false);
 
   // Active Tab
@@ -144,6 +147,40 @@ export default function ClipEditor() {
       console.error(err);
       alert(err.response?.data?.detail || "Failed to start AI generation pipeline");
       setProcessing(false);
+    }
+  };
+
+  const handleFallbackFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFallbackUploading(true);
+    setFallbackProgress(0);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      await axios.post(`/api/projects/${id}/upload-fallback`, formData, {
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}` 
+        },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setFallbackProgress(percentCompleted);
+        }
+      });
+
+      // Reload project state to smoothly transition to "Select a Design"
+      await fetchProject();
+      // DO NOT automatically start generation!
+    } catch (err) {
+      console.error("Fallback upload error:", err);
+      alert(err.response?.data?.detail || "Video upload failed. Please choose a valid MP4, MOV, or WebM video.");
+    } finally {
+      setFallbackUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -342,33 +379,71 @@ export default function ClipEditor() {
           </button>
         </div>
       ) : project?.status === 'FAILED' ? (
-        /* ── State 3: Failed Screen (Proper error display) ── */
-        <div className="glass-authkit rounded-3xl p-8 sm:p-12 text-center max-w-lg mx-auto my-12 relative border border-red-500/20">
-          <div className="w-16 h-16 rounded-3xl bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4 text-red-400">
-            <AlertTriangle className="w-8 h-8" />
-          </div>
-          <h2 className="text-2xl font-extrabold text-white mb-2">Generation Note</h2>
-          <p className="text-gray-300 text-xs sm:text-sm mb-6 leading-relaxed">
-            {project?.error_message || "Video processing could not be completed. Please check your video stream or upload the file directly."}
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <button
-              onClick={() => setIsUploaderOpen(true)}
-              className="btn-ai-glow cursor-pointer w-full sm:w-auto"
-            >
-              <div className="btn-ai-glow-inner px-6 py-2.5 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2">
-                <Upload className="w-4 h-4 text-white" />
-                <span>Upload Video File Directly</span>
+        /* ── State 3: YouTube Download Unavailable / Failed Screen ── */
+        (() => {
+          const isYoutubeBlocked = 
+            project?.error_message?.toLowerCase().includes('blocking') ||
+            project?.error_message?.toLowerCase().includes('youtube') ||
+            project?.error_message?.toLowerCase().includes('cloud') ||
+            project?.error_message?.toLowerCase().includes('bot') ||
+            project?.error_message?.toLowerCase().includes('download') ||
+            project?.error_message?.toLowerCase().includes('unavailable');
+
+          const errorTitle = isYoutubeBlocked ? "YouTube Download Unavailable" : "Generation Note";
+          const errorSubtitle = isYoutubeBlocked 
+            ? "YouTube is blocking automated access to this video. Upload the video directly to continue."
+            : (project?.error_message || "Video processing could not be completed. Please try uploading the video directly.");
+
+          return (
+            <div className="glass-authkit rounded-3xl p-8 sm:p-12 text-center max-w-lg mx-auto my-12 relative border border-red-500/20">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFallbackFileUpload}
+                accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/*"
+                className="hidden"
+              />
+
+              <div className="w-16 h-16 rounded-3xl bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4 text-red-400">
+                <AlertTriangle className="w-8 h-8" />
               </div>
-            </button>
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="btn-pill-glass px-6 py-2.5 text-xs font-bold uppercase tracking-wider cursor-pointer w-full sm:w-auto"
-            >
-              Dashboard
-            </button>
-          </div>
-        </div>
+              <h2 className="text-2xl font-extrabold text-white mb-2">{errorTitle}</h2>
+              <p className="text-gray-300 text-xs sm:text-sm mb-6 leading-relaxed">
+                {errorSubtitle}
+              </p>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={fallbackUploading}
+                  className="btn-ai-glow cursor-pointer w-full sm:w-auto shadow-xl"
+                >
+                  <div className="btn-ai-glow-inner px-8 py-3 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2">
+                    {fallbackUploading ? (
+                      <>
+                        <Loader className="w-4 h-4 animate-spin text-white" />
+                        <span>Uploading Video ({fallbackProgress}%)...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 text-white" />
+                        <span>Upload Video Instead</span>
+                      </>
+                    )}
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  disabled={fallbackUploading}
+                  className="btn-pill-glass px-6 py-3 text-xs font-bold uppercase tracking-wider cursor-pointer w-full sm:w-auto"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+            </div>
+          );
+        })()
       ) : clips.length === 0 ? (
         /* ── State 4: Step 2 "Select a Design" (ONLY when user clicked Setup -> Proceed) ── */
         <div className="space-y-8 max-w-5xl mx-auto py-4">
