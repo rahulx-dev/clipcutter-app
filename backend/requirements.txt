@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+aiosqlite
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+httpx
+yt-dlp
+faster-whisper
+mediapipe
+opencv-python-headless
+razorpay
+pydantic-settings
+aiofiles
+email-validator
+google-auth
