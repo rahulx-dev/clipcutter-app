@@ -559,7 +559,7 @@ export default function Login() {
                 disabled={loading}
                 className="w-full py-3.5 btn-premium-solid text-xs uppercase tracking-wider font-extrabold shadow-xl cursor-pointer disabled:opacity-50 mt-2 flex items-center justify-center gap-2"
               >
-                {loading ? 'Creating Account & Sending OTP...' : 'Create Account'}
+                {loading ? 'Creating Account & Sending OTP...' : 'Create Account & Send OTP'}
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
@@ -608,7 +608,7 @@ export default function Login() {
                 <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center mx-auto text-cyan-300 shadow-[0_0_20px_rgba(6,182,212,0.25)] mb-2">
                   <Mail className="w-6 h-6" />
                 </div>
-                <h3 className="text-base font-extrabold text-white">Verify Your Email</h3>
+                <h3 className="text-base font-extrabold text-white">Verify your email</h3>
                 <p className="text-xs text-gray-300">
                   Enter the 6-digit code sent to:
                 </p>
@@ -643,7 +643,7 @@ export default function Login() {
                   disabled={cooldown > 0 || loading}
                   className="text-cyan-300 hover:text-white font-bold transition-colors disabled:opacity-50 cursor-pointer"
                 >
-                  {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend Code'}
+                  {cooldown > 0 ? `Resend code in ${cooldown}s` : 'RESEND CODE'}
                 </button>
               </div>
 
@@ -653,7 +653,7 @@ export default function Login() {
                 disabled={loading || otpValues.join('').length !== 6}
                 className="w-full py-3.5 btn-premium-solid text-xs uppercase tracking-wider font-extrabold shadow-xl cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
               >
-                {loading ? 'Verifying Code...' : 'Verify Email'}
+                {loading ? 'Verifying Code...' : 'VERIFY EMAIL'}
                 <ArrowRight className="w-4 h-4" />
               </button>
 

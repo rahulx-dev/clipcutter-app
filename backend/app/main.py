@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.database import create_tables, dispose_engine, AsyncSessionLocal
-from app.db.models import User, PlanType
+from app.db.models import User, PlanType, AuthProvider
 from app.core.security import hash_password
 
 from app.api.auth import router as auth_router

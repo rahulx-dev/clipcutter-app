@@ -440,11 +440,11 @@ async def register(
     await db.commit()
 
     # Dispatch real 6-digit OTP via Brevo Email API
-    email_sent = await send_brevo_email_otp(clean_email, user.name, otp)
+    email_sent, delivery_msg = await send_brevo_email_otp(clean_email, user.name, otp)
     if not email_sent:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to send verification code. Please try again."
+            detail=delivery_msg or "Unable to send verification code. Please try again."
         )
 
     return {
@@ -538,11 +538,11 @@ async def send_email_otp(
     await db.commit()
 
     user_name = user.name if user else "Creator"
-    email_sent = await send_brevo_email_otp(clean_email, user_name, otp)
+    email_sent, delivery_msg = await send_brevo_email_otp(clean_email, user_name, otp)
     if not email_sent:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to send verification code. Please try again."
+            detail=delivery_msg or "Unable to send verification code. Please try again."
         )
 
     return {
