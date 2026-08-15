@@ -80,18 +80,11 @@ async def upload_project(
 
 
 async def _background_download(url: str, project_id: int):
-    """Background task to download YouTube video, probe metadata and auto-start pipeline."""
-    from app.services.video_editor import process_full_pipeline
-    import asyncio
-    
+    """Background task to download YouTube video and probe metadata, preparing project for user template selection."""
     try:
         result = await download_youtube(url, settings.TEMP_DIR)
         meta = probe_video(result["file_path"])
         
-        target_shorts = 4
-        lang_pref = "auto"
-        editing_int = "BALANCED"
-
         async with AsyncSessionLocal() as session:
             db_result = await session.execute(
                 select(Project).where(Project.id == project_id)
@@ -102,25 +95,10 @@ async def _background_download(url: str, project_id: int):
                 project.title = project.title if project.title != "YouTube Video" else result["title"]
                 project.duration_seconds = result.get("duration") or meta.get("duration")
                 project.video_metadata = meta
-                target_shorts = project.target_shorts_count or 4
-                lang_pref = project.language_preference or "auto"
-                editing_int = project.editing_intensity or "BALANCED"
                 project.status = ProjectStatus.PENDING
                 project.progress = 100.0
-                project.progress_message = "Download complete — starting viral shorts pipeline..."
+                project.progress_message = "Video downloaded & ready — please select your caption design"
                 await session.commit()
-
-        # Trigger processing in background
-        asyncio.create_task(
-            process_full_pipeline(
-                project_id,
-                'hormozi',
-                AsyncSessionLocal,
-                shorts_count=target_shorts,
-                language_pref=lang_pref,
-                editing_intensity=editing_int
-            )
-        )
     except Exception as e:
         async with AsyncSessionLocal() as session:
             db_result = await session.execute(
@@ -156,9 +134,9 @@ async def youtube_project(
         title=req.title or "YouTube Video",
         source_type=SourceType.YOUTUBE,
         source_url=req.url,
-        status=ProjectStatus.DOWNLOADING,
-        progress=20.0,
-        progress_message="Starting YouTube video download...",
+        status=ProjectStatus.PENDING,
+        progress=100.0,
+        progress_message="YouTube video queued — ready for design selection",
     )
     db.add(project)
     await db.commit()

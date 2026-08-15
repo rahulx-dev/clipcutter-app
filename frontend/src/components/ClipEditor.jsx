@@ -97,7 +97,7 @@ export default function ClipEditor() {
       if (res.data.clips && res.data.clips.length > 0) {
         setSelectedClip(res.data.clips[0]);
       }
-      if (['PROCESSING', 'DOWNLOADING', 'TRANSCRIBING', 'SEGMENTING', 'GENERATING_METADATA'].includes(res.data.status)) {
+      if (['PROCESSING', 'TRANSCRIBING', 'SEGMENTING', 'GENERATING_METADATA'].includes(res.data.status)) {
         setProcessing(true);
       }
     } catch (err) {
