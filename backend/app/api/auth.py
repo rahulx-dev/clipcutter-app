@@ -1,18 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, update
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime, timezone, timedelta
 import re
 import secrets
+import hashlib
 
 from app.core.config import settings
 from app.core.security import hash_password, verify_password, create_access_token, get_current_user
 from app.db.database import get_db
-from app.db.models import User, OTPRecord, PlanType, AuthProvider
+from app.db.models import User, OTPRecord, EmailVerificationToken, PlanType, AuthProvider
 from app.services.sms_service import send_sms_otp, mask_phone_number
+from app.services.email_service import send_verification_email
 from app.services.google_auth_service import verify_google_id_token
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -338,6 +340,14 @@ async def google_oauth_login(
 
 
 # ── 3. Standard Email / Password Routes ──────────────────────────────
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: str
+
+
 @router.post("/register")
 async def register(
     user_data: UserRegisterRequest, 
@@ -352,29 +362,62 @@ async def register(
     existing_user = result.scalar_one_or_none()
     
     if existing_user:
-        raise HTTPException(status_code=400, detail="This email is already registered. Please sign in.")
-        
-    new_user = User(
-        email=clean_email,
-        name=user_data.name or clean_email.split('@')[0],
-        password_hash=hash_password(user_data.password),
-        auth_provider=AuthProvider.EMAIL.value,
-        email_verified=False,
-        plan=PlanType.FREE,
-        credits_remaining=settings.FREE_CREDITS,
-        is_admin=(clean_email == settings.ADMIN_EMAIL)
+        if existing_user.email_verified:
+            raise HTTPException(status_code=400, detail="This email is already registered. Please sign in.")
+        else:
+            # Update password and resend verification
+            existing_user.password_hash = hash_password(user_data.password)
+            if user_data.name:
+                existing_user.name = user_data.name
+            user = existing_user
+    else:
+        user = User(
+            email=clean_email,
+            name=user_data.name or clean_email.split('@')[0],
+            password_hash=hash_password(user_data.password),
+            auth_provider=AuthProvider.EMAIL.value,
+            email_verified=False,
+            plan=PlanType.FREE,
+            credits_remaining=settings.FREE_CREDITS,
+            is_admin=(clean_email == settings.ADMIN_EMAIL)
+        )
+        db.add(user)
+        await db.flush()
+
+    # Invalidate previous unused tokens for this user
+    await db.execute(
+        update(EmailVerificationToken)
+        .where(and_(
+            EmailVerificationToken.user_id == user.id,
+            EmailVerificationToken.is_used == False
+        ))
+        .values(is_used=True)
     )
-    db.add(new_user)
+
+    # Generate single-use cryptographically secure token
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.EMAIL_VERIFICATION_EXPIRY_MINUTES)
+
+    token_record = EmailVerificationToken(
+        user_id=user.id,
+        email=clean_email,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        is_used=False
+    )
+    db.add(token_record)
     await db.commit()
-    await db.refresh(new_user)
+
+    # Dispatch verification email
+    verification_url = f"{settings.FRONTEND_URL}/verify-email?token={raw_token}"
+    send_verification_email(clean_email, user.name, verification_url)
     
-    access_token = create_access_token(data={"sub": str(new_user.id)})
     return {
         "success": True,
-        "access_token": access_token, 
-        "token_type": "bearer", 
-        "user": new_user.to_dict(),
-        "message": "Account created successfully"
+        "email_verified": False,
+        "email": clean_email,
+        "message": f"Verification email sent to {clean_email}. Please check your inbox to activate your account."
     }
 
 
@@ -394,6 +437,13 @@ async def login(
             detail="Incorrect email or password. Please verify your credentials.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Enforce email verification for email-registered accounts
+    if not user.email_verified and user.auth_provider == AuthProvider.EMAIL.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email address before logging in. Check your inbox for the activation link."
+        )
         
     access_token = create_access_token(data={"sub": str(user.id)})
     return {
@@ -402,6 +452,143 @@ async def login(
         "token_type": "bearer", 
         "user": user.to_dict(),
         "message": "Login successful"
+    }
+
+
+@router.get("/verify-email")
+@router.post("/verify-email")
+async def verify_email(
+    token: Optional[str] = None,
+    req: Optional[VerifyEmailRequest] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    raw_token = token or (req.token if req else None)
+    if not raw_token or not raw_token.strip():
+        raise HTTPException(status_code=400, detail="Verification token is missing")
+
+    token_hash = hashlib.sha256(raw_token.strip().encode()).hexdigest()
+    now_utc = datetime.now(timezone.utc)
+
+    result = await db.execute(
+        select(EmailVerificationToken)
+        .where(and_(
+            EmailVerificationToken.token_hash == token_hash,
+            EmailVerificationToken.is_used == False
+        ))
+        .order_by(EmailVerificationToken.created_at.desc())
+    )
+    token_record = result.scalars().first()
+
+    if not token_record:
+        raise HTTPException(
+            status_code=400, 
+            detail="Invalid or already used verification link. Please request a new verification email."
+        )
+
+    exp = token_record.expires_at
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+
+    if exp < now_utc:
+        raise HTTPException(
+            status_code=400, 
+            detail="This verification link has expired. Please request a new verification email."
+        )
+
+    # Invalidate token
+    token_record.is_used = True
+
+    # Mark user as verified
+    user_res = await db.execute(select(User).where(User.id == token_record.user_id))
+    user = user_res.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User account not found")
+
+    user.email_verified = True
+    await db.commit()
+    await db.refresh(user)
+
+    # Issue access token so user is seamlessly logged in upon verification
+    access_token = create_access_token(data={"sub": str(user.id)})
+    return {
+        "success": True,
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user.to_dict(),
+        "message": "Email verified successfully! Your account is now fully active."
+    }
+
+
+@router.post("/resend-verification")
+async def resend_verification(
+    req: ResendVerificationRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    clean_email = validate_genuine_email(req.email)
+    result = await db.execute(select(User).where(User.email == clean_email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email address.")
+
+    if user.email_verified:
+        return {
+            "success": True,
+            "already_verified": True,
+            "message": "Your email is already verified. You can sign in directly."
+        }
+
+    now_utc = datetime.now(timezone.utc)
+
+    # Check 60-second cooldown from last token
+    last_token_res = await db.execute(
+        select(EmailVerificationToken)
+        .where(EmailVerificationToken.user_id == user.id)
+        .order_by(EmailVerificationToken.created_at.desc())
+    )
+    last_token = last_token_res.scalars().first()
+    if last_token and last_token.created_at:
+        created = last_token.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        elapsed = (now_utc - created).total_seconds()
+        if elapsed < settings.EMAIL_VERIFICATION_COOLDOWN_SECONDS:
+            remaining = int(settings.EMAIL_VERIFICATION_COOLDOWN_SECONDS - elapsed)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Please wait {remaining} seconds before requesting a new verification link."
+            )
+
+    # Invalidate previous tokens
+    await db.execute(
+        update(EmailVerificationToken)
+        .where(and_(
+            EmailVerificationToken.user_id == user.id,
+            EmailVerificationToken.is_used == False
+        ))
+        .values(is_used=True)
+    )
+
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    expires_at = now_utc + timedelta(minutes=settings.EMAIL_VERIFICATION_EXPIRY_MINUTES)
+
+    token_record = EmailVerificationToken(
+        user_id=user.id,
+        email=clean_email,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        is_used=False
+    )
+    db.add(token_record)
+    await db.commit()
+
+    verification_url = f"{settings.FRONTEND_URL}/verify-email?token={raw_token}"
+    send_verification_email(clean_email, user.name, verification_url)
+
+    return {
+        "success": True,
+        "message": f"A fresh verification link has been sent to {clean_email}."
     }
 
 

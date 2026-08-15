@@ -127,6 +127,24 @@ class OTPRecord(Base):
     )
 
 
+# ── Email Verification Tokens ────────────────────────────────────────
+class EmailVerificationToken(Base):
+    __tablename__ = "email_verification_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    token_hash = Column(String(255), nullable=False, index=True)  # SHA-256 hash of random token
+    expires_at = Column(DateTime, nullable=False)
+    is_used = Column(Boolean, default=False, nullable=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    user = relationship("User", lazy="select")
+
+
+
 # ── Subscription ─────────────────────────────────────────────────────
 class Subscription(Base):
     __tablename__ = "subscriptions"

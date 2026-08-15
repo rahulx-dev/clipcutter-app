@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
+    # ── SMTP Email Verification ──────────────────────────────────────
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "Clip Cutter AI"
+    EMAIL_VERIFICATION_EXPIRY_MINUTES: int = 30
+    EMAIL_VERIFICATION_COOLDOWN_SECONDS: int = 60
+
     # ── SMS Gateway (Phone OTP) ──────────────────────────────────────
     SMS_PROVIDER: str = "fast2sms"  # "fast2sms" | "twilio" | "msg91" | "console"
     FAST2SMS_API_KEY: str = ""

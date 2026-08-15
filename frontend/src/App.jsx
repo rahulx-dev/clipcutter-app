@@ -13,6 +13,7 @@ import Dashboard from './pages/Dashboard';
 import Pricing from './pages/Pricing';
 import ClipEditor from './components/ClipEditor';
 import AutoCaptionStudio from './pages/AutoCaptionStudio';
+import VerifyEmail from './pages/VerifyEmail';
 
 // Auth Context
 const AuthContext = createContext(null);
@@ -111,6 +112,7 @@ export default function App() {
             <Routes location={location} key={location.pathname}>
               <Route path="/" element={<Navigate to={user ? "/dashboard" : "/login"} replace />} />
               <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" replace />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/caption-editor" element={<ProtectedRoute><AutoCaptionStudio /></ProtectedRoute>} />
               <Route path="/project/:id" element={<ProtectedRoute><ClipEditor /></ProtectedRoute>} />
