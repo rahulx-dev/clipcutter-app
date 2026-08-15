@@ -14,9 +14,10 @@ logger = logging.getLogger("clipcutter.downloader")
 
 async def download_youtube(url: str, output_dir: Path) -> dict:
     """
-    Download YouTube video using multi-client mobile/embedded extractors.
-    Bypasses datacenter bot detection where possible, and provides graceful,
-    meaningful error messages when YouTube restricts automated access.
+    Download YouTube video with multi-tier mobile client fallback.
+    Tier 1 uses YouTube's official Android App client which bypasses datacenter IP blocks.
+    Tier 2 uses iOS App client.
+    Tier 3 uses Web/Creator client.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     temp_prefix = str(uuid.uuid4())[:8]
@@ -30,79 +31,107 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
             'no_warnings': False,
             'geo_bypass': True,
             'nocheckcertificate': True,
-            'socket_timeout': 15,
+            'socket_timeout': 20,
             'retries': 3,
             'fragment_retries': 3,
         }
 
-        # Multi-client priority: android, ios, web_embedded, mweb, tv
-        opts = {
-            **base_opts,
-            'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best[height<=1080]/18/22/best',
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'ios', 'web_embedded', 'mweb', 'tv'],
-                }
-            },
-            'http_headers': {
-                'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 14; en_US; Pixel 7 Pro Build/UQ1A.240205.004)',
-                'Accept-Language': 'en-US,en;q=0.9',
-            }
-        }
-
         # Apply cookies if configured
         if settings.YOUTUBE_COOKIES_FILE and Path(settings.YOUTUBE_COOKIES_FILE).exists():
-            opts['cookiefile'] = str(Path(settings.YOUTUBE_COOKIES_FILE).resolve())
+            base_opts['cookiefile'] = str(Path(settings.YOUTUBE_COOKIES_FILE).resolve())
         elif settings.YOUTUBE_COOKIES:
             cookie_tmp = output_dir / f"cookies_{temp_prefix}.txt"
             cookie_tmp.write_text(settings.YOUTUBE_COOKIES, encoding="utf-8")
-            opts['cookiefile'] = str(cookie_tmp)
+            base_opts['cookiefile'] = str(cookie_tmp)
 
         # Apply proxy if configured
         if settings.YOUTUBE_PROXY:
-            opts['proxy'] = settings.YOUTUBE_PROXY
+            base_opts['proxy'] = settings.YOUTUBE_PROXY
 
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                vid_id = info.get('id', '')
-                title = info.get('title', 'YouTube Video')
-                duration = int(info.get('duration') or 0)
-
-                matched_file = _find_downloaded_file(output_dir, vid_id, temp_prefix)
-                if matched_file and matched_file.exists():
-                    logger.info(f"[Downloader] Successfully downloaded: {title} ({matched_file.name})")
-                    return {
-                        'title': title,
-                        'duration': duration,
-                        'file_path': str(matched_file.resolve()),
-                        'video_id': vid_id
+        # Tier configurations
+        tiers = [
+            # Tier 1: Android Mobile Client (Bypasses cloud datacenter bot challenge)
+            {
+                'name': 'Android Mobile Client',
+                'opts': {
+                    **base_opts,
+                    'format': '18/22/best[height<=720]/best',
+                    'extractor_args': {'youtube': {'player_client': ['android']}},
+                    'http_headers': {
+                        'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 14; en_US; Pixel 7 Pro Build/UQ1A.240205.004)',
+                        'Accept-Language': 'en-US,en;q=0.9',
                     }
-                else:
-                    raise RuntimeError("Downloaded video file could not be located on disk.")
-        except Exception as e:
-            err_str = str(e).lower()
-            logger.error(f"[Downloader] YouTube extraction error: {e}")
+                }
+            },
+            # Tier 2: iOS Mobile Client
+            {
+                'name': 'iOS Mobile Client',
+                'opts': {
+                    **base_opts,
+                    'format': '18/22/best[height<=720]/best',
+                    'extractor_args': {'youtube': {'player_client': ['ios']}},
+                    'http_headers': {
+                        'User-Agent': 'com.google.ios.youtube/19.10.1 (iPhone14,3; U; CPU iOS 17_4 like Mac OS X; en_US)',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                    }
+                }
+            },
+            # Tier 3: Android Creator Client
+            {
+                'name': 'Creator Client',
+                'opts': {
+                    **base_opts,
+                    'format': '18/22/best[height<=720]/best',
+                    'extractor_args': {'youtube': {'player_client': ['android_creator']}},
+                }
+            }
+        ]
 
-            # Clean up any leftover temporary files for this download
-            _cleanup_partial_files(output_dir, vid_id if 'vid_id' in locals() else '', temp_prefix)
+        last_error = None
+        vid_id = ''
 
-            # Distinguish bot/captcha block from other errors
-            if (
-                "sign in to confirm you're not a bot" in err_str
-                or "sign in to confirm you’re not a bot" in err_str
-                or "bot verification" in err_str
-                or "http error 429" in err_str
-                or "use --cookies" in err_str
-                or "cookies-from-browser" in err_str
-            ):
-                raise RuntimeError("YouTube is currently blocking automated downloads on cloud servers for this video. Please upload the video file directly from your device.")
-            elif "private video" in err_str or "video unavailable" in err_str or "this video has been removed" in err_str:
-                raise RuntimeError("This YouTube video is unavailable or restricted. Please check the URL or upload the video directly.")
-            elif "no video formats found" in err_str:
-                raise RuntimeError("Could not retrieve a compatible video stream for this YouTube URL. Please upload the video directly.")
-            else:
-                raise RuntimeError(f"YouTube download failed: {str(e)}")
+        for tier in tiers:
+            try:
+                logger.info(f"[Downloader] Attempting download with {tier['name']}...")
+                with yt_dlp.YoutubeDL(tier['opts']) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    vid_id = info.get('id', '')
+                    title = info.get('title', 'YouTube Video')
+                    duration = int(info.get('duration') or 0)
+
+                    matched_file = _find_downloaded_file(output_dir, vid_id, temp_prefix)
+                    if matched_file and matched_file.exists():
+                        logger.info(f"[Downloader] Successfully downloaded via {tier['name']}: {title} ({matched_file.name})")
+                        return {
+                            'title': title,
+                            'duration': duration,
+                            'file_path': str(matched_file.resolve()),
+                            'video_id': vid_id
+                        }
+            except Exception as e:
+                last_error = e
+                logger.warning(f"[Downloader] {tier['name']} attempt failed: {e}")
+                _cleanup_partial_files(output_dir, vid_id, temp_prefix)
+
+        # If all tiers failed
+        err_str = str(last_error).lower() if last_error else ""
+        _cleanup_partial_files(output_dir, vid_id, temp_prefix)
+
+        if (
+            "sign in to confirm you're not a bot" in err_str
+            or "sign in to confirm you’re not a bot" in err_str
+            or "bot verification" in err_str
+            or "http error 429" in err_str
+            or "use --cookies" in err_str
+            or "cookies-from-browser" in err_str
+        ):
+            raise RuntimeError("YouTube is currently blocking automated downloads on cloud servers for this video. Please upload the video file directly from your device.")
+        elif "private video" in err_str or "video unavailable" in err_str or "this video has been removed" in err_str:
+            raise RuntimeError("This YouTube video is unavailable or restricted. Please check the URL or upload the video directly.")
+        elif "no video formats found" in err_str:
+            raise RuntimeError("Could not retrieve a compatible video stream for this YouTube URL. Please upload the video directly.")
+        else:
+            raise RuntimeError(f"YouTube download failed: {str(last_error)}")
 
     # Enforce a hard 90-second total timeout
     try:
