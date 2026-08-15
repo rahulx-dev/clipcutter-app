@@ -5,11 +5,12 @@ import {
   Play, Pause, Download, Share2, Sparkles, CheckCircle, RefreshCw, 
   ArrowLeft, FileText, Sliders, Zap, ShieldCheck, Flame, MessageSquare, 
   HelpCircle, ChevronRight, Layers, Award, Copy, Check, TrendingUp, AlertTriangle,
-  XCircle, Trash2, Home
+  XCircle, Trash2, Home, Upload
 } from 'lucide-react';
 import { useAuth } from '../App';
 import CaptionStylePicker from './CaptionStylePicker';
 import Cosmic3DBackground from './Cosmic3DBackground';
+import VideoUploader from './VideoUploader';
 
 export default function ClipEditor() {
   const { id } = useParams();
@@ -30,6 +31,7 @@ export default function ClipEditor() {
   const [editingIntensity, setEditingIntensity] = useState('BALANCED');
   const [downloading, setDownloading] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState(false);
+  const [isUploaderOpen, setIsUploaderOpen] = useState(false);
 
   const isCancelledRef = useRef(false);
 
@@ -346,21 +348,24 @@ export default function ClipEditor() {
             <AlertTriangle className="w-8 h-8" />
           </div>
           <h2 className="text-2xl font-extrabold text-white mb-2">Generation Note</h2>
-          <p className="text-gray-300 text-xs sm:text-sm mb-6">
-            {project?.error_message || "Video processing could not be completed. Please check your video stream."}
+          <p className="text-gray-300 text-xs sm:text-sm mb-6 leading-relaxed">
+            {project?.error_message || "Video processing could not be completed. Please check your video stream or upload the file directly."}
           </p>
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <button
-              onClick={() => navigate('/dashboard')}
-              className="btn-pill-glass px-6 py-2.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
+              onClick={() => setIsUploaderOpen(true)}
+              className="btn-ai-glow cursor-pointer w-full sm:w-auto"
             >
-              Back to Dashboard
+              <div className="btn-ai-glow-inner px-6 py-2.5 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2">
+                <Upload className="w-4 h-4 text-white" />
+                <span>Upload Video File Directly</span>
+              </div>
             </button>
             <button
-              onClick={handleStartProcessing}
-              className="btn-pill-white px-6 py-2.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
+              onClick={() => navigate('/dashboard')}
+              className="btn-pill-glass px-6 py-2.5 text-xs font-bold uppercase tracking-wider cursor-pointer w-full sm:w-auto"
             >
-              Retry Generation
+              Dashboard
             </button>
           </div>
         </div>
@@ -719,6 +724,20 @@ export default function ClipEditor() {
           </div>
         </div>
       )}
+
+      {/* Direct Video Upload Modal Fallback */}
+      <VideoUploader
+        isOpen={isUploaderOpen}
+        onClose={() => setIsUploaderOpen(false)}
+        onSuccess={(data) => {
+          setIsUploaderOpen(false);
+          const targetId = data?.id || data?.project?.id;
+          if (targetId) {
+            navigate(`/project/${targetId}`);
+            window.location.reload();
+          }
+        }}
+      />
     </div>
   );
 }

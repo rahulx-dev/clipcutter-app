@@ -100,6 +100,11 @@ class Settings(BaseSettings):
     CLIP_MAX_DURATION: int = 90
     FACE_SAMPLE_RATE: int = 5  # Analyze every Nth frame
 
+    # ── YouTube Downloader (Cookies & Proxy Support) ───────────────────
+    YOUTUBE_COOKIES: Optional[str] = None
+    YOUTUBE_COOKIES_FILE: Optional[str] = None
+    YOUTUBE_PROXY: Optional[str] = None
+
     model_config = {
         "env_file": [".env", "backend/.env", "../.env"],
         "env_file_encoding": "utf-8",

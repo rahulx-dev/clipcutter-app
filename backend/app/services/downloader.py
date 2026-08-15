@@ -7,6 +7,8 @@ import shutil
 import os
 import logging
 
+from app.core.config import settings
+
 logger = logging.getLogger("clipcutter.downloader")
 
 
@@ -48,6 +50,18 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
             }
         }
 
+        # Apply cookies if configured
+        if settings.YOUTUBE_COOKIES_FILE and Path(settings.YOUTUBE_COOKIES_FILE).exists():
+            opts['cookiefile'] = str(Path(settings.YOUTUBE_COOKIES_FILE).resolve())
+        elif settings.YOUTUBE_COOKIES:
+            cookie_tmp = output_dir / f"cookies_{temp_prefix}.txt"
+            cookie_tmp.write_text(settings.YOUTUBE_COOKIES, encoding="utf-8")
+            opts['cookiefile'] = str(cookie_tmp)
+
+        # Apply proxy if configured
+        if settings.YOUTUBE_PROXY:
+            opts['proxy'] = settings.YOUTUBE_PROXY
+
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -74,8 +88,15 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
             _cleanup_partial_files(output_dir, vid_id if 'vid_id' in locals() else '', temp_prefix)
 
             # Distinguish bot/captcha block from other errors
-            if "sign in to confirm you're not a bot" in err_str or "bot verification" in err_str or "http error 429" in err_str:
-                raise RuntimeError("YouTube is currently blocking automated downloads from this server. Please try again later or upload the video directly.")
+            if (
+                "sign in to confirm you're not a bot" in err_str
+                or "sign in to confirm you’re not a bot" in err_str
+                or "bot verification" in err_str
+                or "http error 429" in err_str
+                or "use --cookies" in err_str
+                or "cookies-from-browser" in err_str
+            ):
+                raise RuntimeError("YouTube is currently blocking automated downloads on cloud servers for this video. Please upload the video file directly from your device.")
             elif "private video" in err_str or "video unavailable" in err_str or "this video has been removed" in err_str:
                 raise RuntimeError("This YouTube video is unavailable or restricted. Please check the URL or upload the video directly.")
             elif "no video formats found" in err_str:
