@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
   Play, Pause, Download, Share2, Sparkles, CheckCircle, RefreshCw, 
   ArrowLeft, FileText, Sliders, Zap, ShieldCheck, Flame, MessageSquare, 
   HelpCircle, ChevronRight, Layers, Award, Copy, Check, TrendingUp, AlertTriangle,
-  XCircle, Trash2
+  XCircle, Trash2, Home
 } from 'lucide-react';
 import { useAuth } from '../App';
 import CaptionStylePicker from './CaptionStylePicker';
@@ -21,6 +21,7 @@ export default function ClipEditor() {
   const [selectedClip, setSelectedClip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMsg, setProgressMsg] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('hormozi');
@@ -30,29 +31,45 @@ export default function ClipEditor() {
   const [downloading, setDownloading] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState(false);
 
+  const isCancelledRef = useRef(false);
+
   // Active Tab
   const [activeTab, setActiveTab] = useState('viral_score');
 
   useEffect(() => {
+    isCancelledRef.current = false;
     fetchProject();
   }, [id]);
 
-  // Polling loop while processing or downloading
+  // Polling loop while processing
   useEffect(() => {
     let interval;
-    if (processing) {
+    if (processing && !isCancelledRef.current) {
       interval = setInterval(async () => {
+        if (isCancelledRef.current) {
+          clearInterval(interval);
+          return;
+        }
         try {
           const res = await axios.get(`/api/process/${id}/status`, {
             headers: { Authorization: `Bearer ${token}` }
           });
+          if (isCancelledRef.current) return; // Discard stale response if cancelled
+
           setProgress(res.data.progress || 0);
           setProgressMsg(res.data.progress_message || 'Processing AI pipeline...');
 
-          if (res.data.status === 'COMPLETED' || res.data.status === 'FAILED' || res.data.status === 'CANCELLED') {
+          if (res.data.status === 'COMPLETED') {
             setProcessing(false);
             fetchProject();
             if (refreshUser) refreshUser();
+          } else if (res.data.status === 'CANCELLED') {
+            setProcessing(false);
+            if (refreshUser) refreshUser();
+            navigate('/dashboard', { replace: true });
+          } else if (res.data.status === 'FAILED') {
+            setProcessing(false);
+            fetchProject();
           }
         } catch (err) {
           console.error("Status polling error", err);
@@ -67,6 +84,8 @@ export default function ClipEditor() {
       const res = await axios.get(`/api/projects/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (isCancelledRef.current) return;
+
       setProject(res.data);
       if (res.data.language_preference) {
         setLanguagePref(res.data.language_preference);
@@ -90,6 +109,7 @@ export default function ClipEditor() {
 
   const handleStartProcessing = async () => {
     try {
+      isCancelledRef.current = false;
       setProcessing(true);
       const res = await axios.post(`/api/process/${id}`, {
         caption_style: selectedStyle,
@@ -112,14 +132,23 @@ export default function ClipEditor() {
   const handleCancelProcessing = async () => {
     if (!window.confirm("Are you sure you want to cancel this video generation?")) return;
     try {
+      isCancelledRef.current = true;
+      setCancelling(true);
+      setProcessing(false);
+
       await axios.post(`/api/process/${id}/cancel`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setProcessing(false);
-      fetchProject();
+      
+      if (refreshUser) refreshUser();
+
+      // Return user directly to Dashboard / Home page
+      navigate('/dashboard', { replace: true });
     } catch (err) {
-      console.error(err);
-      alert("Failed to cancel generation");
+      console.error("Cancel generation note:", err);
+      navigate('/dashboard', { replace: true });
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -193,19 +222,16 @@ export default function ClipEditor() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-32">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
-          <span className="text-white font-semibold text-xs tracking-widest uppercase">Loading Studio...</span>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <div className="w-10 h-10 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+        <p className="text-gray-400 text-xs font-semibold tracking-wider uppercase">Loading studio workspace...</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 relative">
-      {/* 3D Cosmic Background */}
-      <Cosmic3DBackground particleCount={300} opacity={0.3} speed={0.04} />
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 relative">
+      <Cosmic3DBackground />
 
       {/* Top Header Navigation */}
       <div className="flex items-center justify-between py-4 mb-6 border-b border-white/[0.08] relative z-10">
@@ -238,30 +264,8 @@ export default function ClipEditor() {
         </div>
       </div>
 
-      {/* Error / Cancel Banner */}
-      {(project?.status === 'FAILED' || project?.status === 'CANCELLED') && !processing && (
-        <div className="mb-8 p-5 glass-authkit rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 max-w-4xl mx-auto border-red-500/20">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-6 h-6 text-red-400 flex-shrink-0" />
-            <div>
-              <h4 className="text-sm font-bold text-white">
-                {project?.status === 'CANCELLED' ? 'Generation Cancelled' : 'Generation Note'}
-              </h4>
-              <p className="text-xs text-gray-300">{project?.error_message || project?.progress_message || "Project is ready to be processed."}</p>
-            </div>
-          </div>
-          <button
-            onClick={handleStartProcessing}
-            className="btn-pill-white px-6 py-2.5 text-xs font-bold uppercase tracking-wider cursor-pointer whitespace-nowrap"
-          >
-            Start Generation
-          </button>
-        </div>
-      )}
-
-      {/* Main Studio Layout */}
+      {/* ── State 1: Processing Screen with Cancel Button ── */}
       {processing ? (
-        /* Processing Screen with Cancel Button */
         <div className="glass-authkit rounded-3xl p-8 sm:p-12 text-center max-w-xl mx-auto my-12 relative">
           <div className="corner-dot corner-dot-tl"></div>
           <div className="corner-dot corner-dot-tr"></div>
@@ -294,14 +298,58 @@ export default function ClipEditor() {
           {/* Cancel Generation Button */}
           <button
             onClick={handleCancelProcessing}
-            className="btn-pill-glass px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-red-400 hover:text-red-300 hover:border-red-500/40 cursor-pointer flex items-center gap-2 mx-auto"
+            disabled={cancelling}
+            className="btn-pill-glass px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-red-400 hover:text-red-300 hover:border-red-500/40 cursor-pointer flex items-center gap-2 mx-auto disabled:opacity-50"
           >
             <XCircle className="w-4 h-4" />
-            <span>Cancel Generation</span>
+            <span>{cancelling ? "Cancelling..." : "Cancel Generation"}</span>
           </button>
         </div>
+      ) : project?.status === 'CANCELLED' ? (
+        /* ── State 2: Cancelled Screen (Never render design templates) ── */
+        <div className="glass-authkit rounded-3xl p-8 sm:p-12 text-center max-w-lg mx-auto my-12 relative border border-gray-700/40">
+          <div className="w-16 h-16 rounded-3xl bg-gray-500/10 border border-gray-500/20 flex items-center justify-center mx-auto mb-4 text-gray-400">
+            <XCircle className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-extrabold text-white mb-2">Generation Cancelled</h2>
+          <p className="text-gray-400 text-xs sm:text-sm mb-6">
+            This video generation was stopped by user request. No credits were deducted.
+          </p>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="btn-pill-white px-8 py-3 text-xs font-bold uppercase tracking-wider cursor-pointer flex items-center gap-2 mx-auto"
+          >
+            <Home className="w-4 h-4" />
+            <span>Return to Dashboard</span>
+          </button>
+        </div>
+      ) : project?.status === 'FAILED' ? (
+        /* ── State 3: Failed Screen (Proper error display) ── */
+        <div className="glass-authkit rounded-3xl p-8 sm:p-12 text-center max-w-lg mx-auto my-12 relative border border-red-500/20">
+          <div className="w-16 h-16 rounded-3xl bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4 text-red-400">
+            <AlertTriangle className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-extrabold text-white mb-2">Generation Note</h2>
+          <p className="text-gray-300 text-xs sm:text-sm mb-6">
+            {project?.error_message || "Video processing could not be completed. Please check your video stream."}
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="btn-pill-glass px-6 py-2.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              Back to Dashboard
+            </button>
+            <button
+              onClick={handleStartProcessing}
+              className="btn-pill-white px-6 py-2.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              Retry Generation
+            </button>
+          </div>
+        </div>
       ) : clips.length === 0 ? (
-        /* Professional Dedicated Caption Studio & Setup Screen */
+        /* ── State 4: Step 2 "Select a Design" (ONLY when user clicked Setup -> Proceed) ── */
         <div className="space-y-8 max-w-5xl mx-auto py-4">
           {/* Source Video Ingested Summary Card */}
           <div className="glass-card-verdant p-5 sm:p-6 rounded-3xl border border-white/15 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
@@ -416,7 +464,7 @@ export default function ClipEditor() {
           </div>
         </div>
       ) : (
-        /* Completed Studio Workspace with 3-Column Layout */
+        /* ── State 5: Completed Studio Workspace with 3-Column Layout ── */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Clips Selector (3 cols) */}
           <div className="lg:col-span-3 space-y-3">
@@ -447,22 +495,23 @@ export default function ClipEditor() {
                           <TrendingUp className="w-3 h-3 text-white" />
                           <span>{clip.viral_score || 85}/100</span>
                         </span>
-                        {/* Delete Single Short Button */}
                         <button
                           onClick={(e) => handleDeleteClip(clip.id, e)}
-                          className="p-1 rounded-md text-gray-400 hover:text-red-400 hover:bg-white/[0.06] transition-colors cursor-pointer"
                           title="Delete Short"
+                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-400 transition-opacity"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
-                    <h4 className="text-xs font-bold text-white line-clamp-2 mb-1.5">
-                      {clip.title || `Viral Short #${idx + 1}`}
+
+                    <h4 className="text-xs font-bold text-gray-200 line-clamp-1 mb-2">
+                      {clip.title || `Viral Moment #${idx + 1}`}
                     </h4>
+
                     <div className="flex items-center justify-between text-[10px] text-gray-400">
-                      <span>{clip.duration}s</span>
-                      <span className="uppercase text-gray-300 font-semibold">{clip.caption_style}</span>
+                      <span>{Math.round(clip.duration || 30)}s duration</span>
+                      <span className="text-white font-semibold">9:16 Vertical</span>
                     </div>
                   </div>
                 );
@@ -470,206 +519,183 @@ export default function ClipEditor() {
             </div>
           </div>
 
-          {/* Center Column: 9:16 Video Player (4 cols) */}
+          {/* Center Column: 9:16 Vertical Video Player (4 cols) */}
           <div className="lg:col-span-4 flex flex-col items-center">
-            <div className="w-full max-w-[320px] aspect-[9/16] bg-black rounded-3xl overflow-hidden border border-white/15 shadow-2xl relative">
+            <div className="w-full max-w-[340px] aspect-[9/16] bg-black rounded-3xl overflow-hidden border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.8)] relative group">
               {selectedClip ? (
-                <video 
+                <video
                   key={selectedClip.id}
                   src={`/api/clips/${selectedClip.id}/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`}
-                  controls 
+                  controls
                   playsInline
-                  autoPlay
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">
-                  Select a short to preview
+                <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-2 p-6 text-center">
+                  <Play className="w-12 h-12 text-white/30" />
+                  <p className="text-xs font-semibold">Select a short from the list</p>
                 </div>
               )}
             </div>
 
-            {/* Quick Actions Under Player */}
+            {/* Quick Download Button below Player */}
             {selectedClip && (
-              <div className="w-full max-w-[320px] mt-4 flex items-center gap-2">
-                <button
-                  onClick={() => handleDownload(selectedClip)}
-                  disabled={downloading}
-                  className="flex-1 btn-ai-glow cursor-pointer disabled:opacity-50"
-                >
-                  <div className="btn-ai-glow-inner py-3 text-xs w-full">
-                    <Download className="w-4 h-4 stroke-[3]" />
-                    <span>{downloading ? 'Downloading...' : 'Download MP4'}</span>
-                  </div>
-                </button>
-                <button
-                  onClick={() => handleDeleteClip(selectedClip.id)}
-                  className="p-3 rounded-full btn-pill-glass text-gray-400 hover:text-red-400 cursor-pointer flex items-center justify-center transition-colors"
-                  title="Delete Video"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+              <button
+                onClick={() => handleDownload(selectedClip)}
+                disabled={downloading}
+                className="btn-pill-white w-full max-w-[340px] mt-4 py-3 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Download className="w-4 h-4" />
+                <span>{downloading ? 'Preparing Download...' : 'Download MP4 (9:16 HD)'}</span>
+              </button>
             )}
           </div>
 
-          {/* Right Column: Intelligence Suite (5 cols) */}
+          {/* Right Column: AI Intelligence, Viral Breakdown & Hooks (5 cols) */}
           <div className="lg:col-span-5 space-y-4">
             {/* Tabs */}
-            <div className="flex bg-white/[0.04] p-1 rounded-full border border-white/10">
+            <div className="flex bg-white/[0.04] p-1 rounded-2xl border border-white/10">
               <button
                 onClick={() => setActiveTab('viral_score')}
-                className={`flex-1 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
-                  activeTab === 'viral_score' ? 'bg-white text-black font-extrabold' : 'text-gray-400 hover:text-white'
+                className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'viral_score' ? 'bg-white text-black font-extrabold shadow' : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Viral Score
+                Viral Intelligence
               </button>
               <button
                 onClick={() => setActiveTab('hooks')}
-                className={`flex-1 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
-                  activeTab === 'hooks' ? 'bg-white text-black font-extrabold' : 'text-gray-400 hover:text-white'
+                className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'hooks' ? 'bg-white text-black font-extrabold shadow' : 'text-gray-400 hover:text-white'
                 }`}
               >
-                AI Hooks
+                Hook Library
               </button>
               <button
-                onClick={() => setActiveTab('seo')}
-                className={`flex-1 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
-                  activeTab === 'seo' ? 'bg-white text-black font-extrabold' : 'text-gray-400 hover:text-white'
+                onClick={() => setActiveTab('broll')}
+                className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'broll' ? 'bg-white text-black font-extrabold shadow' : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Titles and SEO
+                B-Roll & Zoom
               </button>
             </div>
 
-            {/* Tab 1: Viral Score Breakdown */}
-            {activeTab === 'viral_score' && selectedClip && (
-              <div className="glass-authkit p-5 rounded-3xl space-y-4">
-                <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+            {/* Tab 1: Viral Intelligence */}
+            {activeTab === 'viral_score' && (
+              <div className="glass-authkit rounded-3xl p-5 space-y-4 border-white/10">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Total Virality Score</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl font-black text-white">{selectedClip?.viral_score || 85}</span>
+                    <span className="text-xs text-gray-400 font-bold">/ 100</span>
+                  </div>
+                </div>
+
+                {/* Viral Metrics Breakdown */}
+                <div className="space-y-3 pt-2">
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">AI Viral Rating</span>
-                    <h3 className="text-2xl font-extrabold text-white flex items-center gap-2">
-                      <span>{selectedClip.viral_score || 85}</span>
-                      <span className="text-xs text-gray-500 font-normal">/ 100</span>
-                    </h3>
-                  </div>
-                  <div className="px-3 py-1 rounded-full bg-white/[0.08] border border-white/20 text-white text-[10px] font-bold uppercase">
-                    High Retention
-                  </div>
-                </div>
-
-                {/* Sub-Score Gauges */}
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between items-center text-gray-300 text-[11px]">
-                    <span>Hook Strength</span>
-                    <span className="font-bold text-white">18 / 20</span>
-                  </div>
-                  <div className="w-full bg-white/10 rounded-full h-1.5">
-                    <div className="bg-white h-1.5 rounded-full" style={{ width: '90%' }}></div>
-                  </div>
-
-                  <div className="flex justify-between items-center text-gray-300 text-[11px] pt-1">
-                    <span>Retention Potential</span>
-                    <span className="font-bold text-white">17 / 20</span>
-                  </div>
-                  <div className="w-full bg-white/10 rounded-full h-1.5">
-                    <div className="bg-white h-1.5 rounded-full" style={{ width: '85%' }}></div>
-                  </div>
-
-                  <div className="flex justify-between items-center text-gray-300 text-[11px] pt-1">
-                    <span>Pacing and Energy</span>
-                    <span className="font-bold text-white">14 / 15</span>
-                  </div>
-                  <div className="w-full bg-white/10 rounded-full h-1.5">
-                    <div className="bg-white h-1.5 rounded-full" style={{ width: '93%' }}></div>
-                  </div>
-                </div>
-
-                {/* AI Explanation Box */}
-                <div className="p-3.5 bg-white/[0.02] border border-white/[0.06] rounded-2xl">
-                  <p className="text-[11px] font-bold text-white mb-1 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-blue-400" /> AI Reason for Selection:
-                  </p>
-                  <p className="text-xs text-gray-300 leading-relaxed">
-                    "{selectedClip.ai_explanation || 'Selected because the speaker opens with high energy and delivers a complete takeaway message.'}"
-                  </p>
-                </div>
-
-                {/* Quality Check Status */}
-                <div className="pt-2 flex items-center justify-between text-[11px] text-gray-400 border-t border-white/[0.06]">
-                  <span className="flex items-center gap-1 text-emerald-400"><ShieldCheck className="w-3.5 h-3.5" /> Subtitles Synced</span>
-                  <span className="flex items-center gap-1 text-emerald-400"><ShieldCheck className="w-3.5 h-3.5" /> Audio Normalized</span>
-                  <span className="flex items-center gap-1 text-emerald-400"><ShieldCheck className="w-3.5 h-3.5" /> 9:16 Safe Margin</span>
-                </div>
-              </div>
-            )}
-
-            {/* Tab 2: AI Hooks Switcher */}
-            {activeTab === 'hooks' && selectedClip && (
-              <div className="glass-authkit p-5 rounded-3xl space-y-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Flame className="w-4 h-4 text-orange-400" /> 6 Alternative AI Hooks
-                  </span>
-                  <span className="text-[10px] text-gray-400">Click to apply</span>
-                </div>
-
-                <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
-                  {(selectedClip.hooks || []).map((h, i) => (
-                    <div 
-                      key={i}
-                      onClick={() => handleApplyHook(h.text)}
-                      className="p-3 rounded-2xl bg-white/[0.02] border border-white/10 hover:border-white/30 cursor-pointer transition-all flex flex-col justify-between group"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-bold uppercase text-blue-300">
-                          {h.label || h.category}
-                        </span>
-                        <span className="text-[10px] text-gray-400 group-hover:text-white transition-colors">Apply</span>
-                      </div>
-                      <p className="text-xs text-gray-200 font-medium leading-snug">"{h.text}"</p>
+                    <div className="flex justify-between text-xs font-bold text-gray-300 mb-1">
+                      <span>Hook Strength (0-3s retention)</span>
+                      <span className="text-white">92%</span>
                     </div>
-                  ))}
+                    <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-white h-1.5 rounded-full" style={{ width: '92%' }}></div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs font-bold text-gray-300 mb-1">
+                      <span>Story Pacing & Flow</span>
+                      <span className="text-white">88%</span>
+                    </div>
+                    <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-white h-1.5 rounded-full" style={{ width: '88%' }}></div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs font-bold text-gray-300 mb-1">
+                      <span>Emotional Payoff & Climax</span>
+                      <span className="text-white">86%</span>
+                    </div>
+                    <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-white h-1.5 rounded-full" style={{ width: '86%' }}></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* AI Explanation */}
+                <div className="pt-3 border-t border-white/10">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-white mb-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Why This Clip Will Go Viral</span>
+                  </div>
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    {selectedClip?.ai_explanation || "High curiosity gap in opening 3 seconds with emotional peak at midway. Recommended for TikTok & YouTube Shorts algorithms."}
+                  </p>
                 </div>
               </div>
             )}
 
-            {/* Tab 3: AI Titles & SEO Suite */}
-            {activeTab === 'seo' && selectedClip && (
-              <div className="glass-authkit p-5 rounded-3xl space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
-                    Suggested Viral Title Options
-                  </label>
-                  <div className="space-y-2">
-                    {(selectedClip.seo_titles || [selectedClip.title]).map((t, idx) => (
-                      <div 
-                        key={idx}
-                        className="p-2.5 bg-white/[0.02] border border-white/10 rounded-xl flex items-center justify-between text-xs text-gray-200 hover:border-white/30 transition-all"
-                      >
-                        <span className="truncate max-w-[280px] font-medium">{t}</span>
-                        <button 
-                          onClick={() => copyToClipboard(t)}
-                          className="text-gray-400 hover:text-white p-1 cursor-pointer"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+            {/* Tab 2: Hook Library */}
+            {activeTab === 'hooks' && (
+              <div className="glass-authkit rounded-3xl p-5 space-y-3 border-white/10">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-white">AI Alternative Hooks</span>
+                  <span className="text-[10px] text-gray-400">Click to apply to opening frame</span>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
-                    Hashtags and Keywords
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(selectedClip.hashtags || ["#Shorts", "#Viral", "#FYP", "#Trending"]).map((tag, i) => (
-                      <span key={i} className="px-2.5 py-1 bg-white/[0.04] border border-white/10 rounded-full text-[11px] text-gray-200 font-semibold">
-                        {tag}
-                      </span>
-                    ))}
+                <div className="space-y-2">
+                  {(selectedClip?.hooks || [
+                    "Wait until you see how this ends...",
+                    "Nobody talks about this secret trick.",
+                    "This 1 habit will change everything in 2026."
+                  ]).map((hook, hIdx) => {
+                    const isCurrentHook = selectedClip?.selected_hook === hook;
+                    return (
+                      <div
+                        key={hIdx}
+                        onClick={() => handleApplyHook(hook)}
+                        className={`p-3 rounded-2xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                          isCurrentHook 
+                            ? 'bg-white/10 border-white text-white font-bold' 
+                            : 'bg-white/[0.03] border-white/10 text-gray-300 hover:border-white/30'
+                        }`}
+                      >
+                        <span className="line-clamp-1 pr-2">"{hook}"</span>
+                        <span className="text-[10px] font-black uppercase text-white bg-white/10 px-2 py-0.5 rounded-full flex-shrink-0">
+                          {isCurrentHook ? 'Active' : 'Apply'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: B-Roll & Zoom */}
+            {activeTab === 'broll' && (
+              <div className="glass-authkit rounded-3xl p-5 space-y-3 border-white/10">
+                <span className="text-xs font-bold uppercase tracking-wider text-white">Automated Cinematic Enhancements</span>
+                <div className="space-y-2 text-xs text-gray-300">
+                  <div className="p-3 bg-white/[0.03] rounded-2xl border border-white/10 flex items-center justify-between">
+                    <span>9:16 Smart Face Center-Tracking</span>
+                    <span className="text-emerald-400 font-bold flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" /> Applied
+                    </span>
+                  </div>
+                  <div className="p-3 bg-white/[0.03] rounded-2xl border border-white/10 flex items-center justify-between">
+                    <span>Dynamic Speech Jump-Cut Trimming</span>
+                    <span className="text-emerald-400 font-bold flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" /> Applied
+                    </span>
+                  </div>
+                  <div className="p-3 bg-white/[0.03] rounded-2xl border border-white/10 flex items-center justify-between">
+                    <span>Loudnorm Broadcast Audio Normalization</span>
+                    <span className="text-emerald-400 font-bold flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" /> Applied
+                    </span>
                   </div>
                 </div>
               </div>
