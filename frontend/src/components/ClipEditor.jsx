@@ -24,6 +24,9 @@ export default function ClipEditor() {
   const [progress, setProgress] = useState(0);
   const [progressMsg, setProgressMsg] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('hormozi');
+  const [shortsCount, setShortsCount] = useState(4);
+  const [languagePref, setLanguagePref] = useState('auto');
+  const [editingIntensity, setEditingIntensity] = useState('BALANCED');
   const [downloading, setDownloading] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState(false);
 
@@ -84,9 +87,9 @@ export default function ClipEditor() {
       setProcessing(true);
       const res = await axios.post(`/api/process/${id}`, {
         caption_style: selectedStyle,
-        shorts_count: 4,
-        language_pref: project?.language_preference || 'auto',
-        editing_intensity: 'BALANCED'
+        shorts_count: shortsCount,
+        language_pref: languagePref,
+        editing_intensity: editingIntensity
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -292,27 +295,112 @@ export default function ClipEditor() {
           </button>
         </div>
       ) : clips.length === 0 ? (
-        /* Unprocessed Project Setup */
-        <div className="space-y-8 max-w-5xl mx-auto">
+        /* Professional Dedicated Caption Studio & Setup Screen */
+        <div className="space-y-8 max-w-5xl mx-auto py-4">
+          {/* Source Video Ingested Summary Card */}
+          <div className="glass-card-verdant p-5 sm:p-6 rounded-3xl border border-white/15 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-[#b8f032]/20 border border-[#b8f032]/40 flex items-center justify-center text-[#b8f032] flex-shrink-0 shadow-lg">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#b8f032] bg-[#b8f032]/10 px-2 py-0.5 rounded-md border border-[#b8f032]/30">
+                  {project?.source_type || 'SOURCE'} VIDEO READY
+                </span>
+                <h2 className="text-base sm:text-lg font-black text-white mt-1 line-clamp-1">{project?.title || 'Your Video Project'}</h2>
+                <p className="text-xs text-gray-400">Choose your animated caption styling below to create vertical 9:16 shorts.</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <span className="text-xs font-semibold text-gray-400 bg-white/[0.04] px-3 py-1.5 rounded-full border border-white/10">
+                1 Credit Required
+              </span>
+            </div>
+          </div>
+
           <div className="text-center max-w-2xl mx-auto">
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-white mb-3">
-              Configure Your <span className="font-serif-italic">Viral Style</span>
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-white mb-2 tracking-tight">
+              Select Your <span className="font-serif-italic text-[#b8f032]">Caption Aesthetic</span>
             </h1>
             <p className="text-gray-400 text-xs sm:text-sm">
-              Pick your preferred subtitle animation design. Our AI will automatically detect face coordinates, generate synchronized captions, and score viral retention.
+              Click any caption design to preview. Our Whisper AI will automatically detect words, burn synchronized animations, and track faces to 9:16 framing.
             </p>
           </div>
 
+          {/* 16 Interactive Caption Cards */}
           <CaptionStylePicker selected={selectedStyle} onSelect={setSelectedStyle} />
 
-          <div className="flex justify-center pt-4">
+          {/* AI Pipeline Customization Settings */}
+          <div className="glass-card-verdant p-5 rounded-3xl border border-white/15 max-w-3xl mx-auto">
+            <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
+              <Sliders className="w-4 h-4 text-[#b8f032]" />
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-white">AI Shorts Parameters</h3>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Language Selection */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+                  Spoken Language AI
+                </label>
+                <select 
+                  value={languagePref}
+                  onChange={(e) => setLanguagePref(e.target.value)}
+                  className="w-full px-3 py-2 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#b8f032] cursor-pointer"
+                >
+                  <option value="auto">Auto Detect Language</option>
+                  <option value="hi">Hindi (हिंदी)</option>
+                  <option value="hinglish">Hinglish (Roman Hindi)</option>
+                  <option value="en">English (US/UK)</option>
+                </select>
+              </div>
+
+              {/* Target Shorts Count */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+                  Output Shorts Count
+                </label>
+                <select 
+                  value={shortsCount}
+                  onChange={(e) => setShortsCount(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#b8f032] cursor-pointer"
+                >
+                  <option value={1}>1 Viral Short</option>
+                  <option value={4}>4 Viral Shorts (Recommended)</option>
+                  <option value={10}>10 Viral Shorts</option>
+                  <option value={0}>Max Possible Highlights</option>
+                </select>
+              </div>
+
+              {/* Editing Intensity */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+                  Visual Pacing
+                </label>
+                <select 
+                  value={editingIntensity}
+                  onChange={(e) => setEditingIntensity(e.target.value)}
+                  className="w-full px-3 py-2 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#b8f032] cursor-pointer"
+                >
+                  <option value="BALANCED">Balanced Flow (Standard)</option>
+                  <option value="AGGRESSIVE">High Energy Fast Cuts</option>
+                  <option value="MINIMAL">Cinematic Minimal</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Action CTA Button */}
+          <div className="flex justify-center pt-2 pb-8">
             <button
               onClick={handleStartProcessing}
-              className="btn-ai-glow cursor-pointer shadow-2xl"
+              className="btn-ai-glow cursor-pointer shadow-2xl scale-105 hover:scale-110 transition-transform"
             >
-              <div className="btn-ai-glow-inner px-10 py-4 text-xs sm:text-sm">
-                <Zap className="w-4 h-4 fill-white text-white" />
-                <span>Generate 4 Viral Shorts (1 Credit)</span>
+              <div className="btn-ai-glow-inner px-12 py-4 text-xs sm:text-sm font-black uppercase tracking-wider flex items-center gap-3">
+                <Zap className="w-5 h-5 fill-white text-white" />
+                <span>Generate {shortsCount || 4} Shorts with {selectedStyle.replace('_', ' ').toUpperCase()} (1 Credit)</span>
+                <ChevronRight className="w-4 h-4 stroke-[3]" />
               </div>
             </button>
           </div>
