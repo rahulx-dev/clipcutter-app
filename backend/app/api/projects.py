@@ -70,7 +70,7 @@ async def upload_project(
         duration_seconds=meta.get("duration", 0.0),
         video_metadata=meta,
         status=ProjectStatus.PENDING,
-        progress=100.0,
+        progress=0.0,
         progress_message="File uploaded & inspected — ready to generate",
     )
     db.add(project)
