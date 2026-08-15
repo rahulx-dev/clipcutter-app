@@ -131,8 +131,9 @@ def generate_otp_email_html(user_name: str, otp_code: str) -> str:
 async def send_brevo_email_otp(to_email: str, user_name: str, otp_code: str) -> bool:
     """
     Send real 6-digit email OTP using Brevo (Sendinblue) Transactional Email API.
-    Fallback to SMTP if configured or structured logging.
-    Security: The OTP itself is never logged.
+    Fallback to SMTP if configured.
+    Security: The raw OTP value is NEVER logged or leaked.
+    Returns True only upon successful delivery/acceptance, False otherwise.
     """
     subject = "Your Clip_Cut verification code"
     text_content = f"Your Clip_Cut verification code is: {otp_code}\n\nThis code expires in {settings.EMAIL_OTP_EXPIRY_MINUTES} minutes."
@@ -170,8 +171,10 @@ async def send_brevo_email_otp(to_email: str, user_name: str, otp_code: str) -> 
                     return True
                 else:
                     logger.error(f"[Brevo Email API Error] Status {response.status_code}: {response.text}")
+                    return False
         except Exception as e:
             logger.error(f"[Brevo Email API Exception] {e}")
+            return False
 
     # ── 2. SMTP Fallback ───────────────────────────────────────────────
     if settings.SMTP_USER and settings.SMTP_PASSWORD:
@@ -200,7 +203,11 @@ async def send_brevo_email_otp(to_email: str, user_name: str, otp_code: str) -> 
             return True
         except Exception as e:
             logger.error(f"[SMTP Fallback Error] {e}")
+            return False
 
-    # ── 3. Notification log (Never log the raw OTP value) ─────────────
-    logger.info(f"[Email OTP Engine] Verification code generated and dispatched to {to_email}")
-    return True
+    # ── 3. Dev / Staging Simulation Fallback ───────────────────────────
+    if settings.DEBUG:
+        logger.info(f"[Dev Mode] Verification code generated for {to_email} (Brevo API key not set in .env)")
+        return True
+
+    return False

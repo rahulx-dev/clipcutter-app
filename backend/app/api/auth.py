@@ -440,7 +440,12 @@ async def register(
     await db.commit()
 
     # Dispatch real 6-digit OTP via Brevo Email API
-    await send_brevo_email_otp(clean_email, user.name, otp)
+    email_sent = await send_brevo_email_otp(clean_email, user.name, otp)
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Unable to send verification code. Please try again."
+        )
 
     return {
         "success": True,
@@ -533,7 +538,12 @@ async def send_email_otp(
     await db.commit()
 
     user_name = user.name if user else "Creator"
-    await send_brevo_email_otp(clean_email, user_name, otp)
+    email_sent = await send_brevo_email_otp(clean_email, user_name, otp)
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Unable to send verification code. Please try again."
+        )
 
     return {
         "success": True,
@@ -626,7 +636,7 @@ async def verify_email_otp(
         "access_token": access_token,
         "token_type": "bearer",
         "user": user.to_dict(),
-        "message": "Email verified successfully! Welcome to Clip_Cut."
+        "message": "Email verified successfully"
     }
 
 
@@ -651,7 +661,7 @@ async def login(
     if not user.email_verified and user.auth_provider == AuthProvider.EMAIL.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email before logging in."
+            detail="Please verify your email first."
         )
         
     access_token = create_access_token(data={"sub": str(user.id)})

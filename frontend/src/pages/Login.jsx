@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Phone, KeyRound, ArrowRight, ArrowLeft, ShieldCheck, CheckCircle2, 
-  AlertCircle, Sparkles, RefreshCw, Lock, Mail, Eye, EyeOff, Smartphone, Send
+  ArrowRight, ArrowLeft, ShieldCheck, CheckCircle2, 
+  AlertCircle, Sparkles, RefreshCw, Lock, Mail, Eye, EyeOff, User, KeyRound
 } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
 import axios from 'axios';
@@ -11,270 +11,211 @@ import { useNavigate } from 'react-router-dom';
 import Cosmic3DBackground from '../components/Cosmic3DBackground';
 
 export default function Login() {
-  // Auth Tab: 'phone' | 'email'
-  const [authMethod, setAuthMethod] = useState('phone');
-  
-  // Phone OTP Flow State: 'phone_input' | 'otp_verify'
-  const [phoneStep, setPhoneStep] = useState('phone_input');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [phoneOtpValues, setPhoneOtpValues] = useState(['', '', '', '', '', '']);
-  const [maskedPhone, setMaskedPhone] = useState('');
-  const [phoneCooldown, setPhoneCooldown] = useState(0);
-  const phoneOtpInputRefs = useRef([]);
+  // Primary Flow Mode: 'signin' | 'signup' | 'verify_otp'
+  const [authMode, setAuthMode] = useState('signin');
 
-  // Email Flow State: 'login' | 'register'
-  const [emailMode, setEmailMode] = useState('login');
-  const [emailStep, setEmailStep] = useState('input'); // 'input' | 'otp_verify'
-  const [registeredEmail, setRegisteredEmail] = useState('');
-  const [fullName, setFullName] = useState('');
+  // Sign In / Sign Up Form State
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [emailOtpValues, setEmailOtpValues] = useState(['', '', '', '', '', '']);
-  const [emailCooldown, setEmailCooldown] = useState(0);
-  const [showVerifyNowBtn, setShowVerifyNowBtn] = useState(false);
-  const emailOtpInputRefs = useRef([]);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Common UI State
+  // OTP Verification State
+  const [targetEmail, setTargetEmail] = useState('');
+  const [otpValues, setOtpValues] = useState(['', '', '', '', '', '']);
+  const [cooldown, setCooldown] = useState(0);
+  const otpInputRefs = useRef([]);
+
+  // UI / Feedback State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [unverifiedEmailFound, setUnverifiedEmailFound] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  // ── Cooldown Timers ───────────────────────────────────────────────
+  // ── Live Resend Cooldown Timer ────────────────────────────────────
   useEffect(() => {
     let timer;
-    if (phoneCooldown > 0) {
-      timer = setInterval(() => setPhoneCooldown((prev) => prev - 1), 1000);
+    if (cooldown > 0) {
+      timer = setInterval(() => {
+        setCooldown((prev) => prev - 1);
+      }, 1000);
     }
     return () => clearInterval(timer);
-  }, [phoneCooldown]);
+  }, [cooldown]);
 
-  useEffect(() => {
-    let timer;
-    if (emailCooldown > 0) {
-      timer = setInterval(() => setEmailCooldown((prev) => prev - 1), 1000);
-    }
-    return () => clearInterval(timer);
-  }, [emailCooldown]);
-
-  // ── Phone Input Handlers ──────────────────────────────────────────
-  const handlePhoneChange = (e) => {
-    const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-    setPhoneNumber(val);
-    if (error) setError('');
-  };
-
-  const handleSendPhoneOtp = async (e) => {
-    if (e) e.preventDefault();
+  // ── Switch Tabs Helper ────────────────────────────────────────────
+  const switchMode = (mode) => {
+    setAuthMode(mode);
     setError('');
     setSuccessMsg('');
-
-    if (phoneNumber.length !== 10 || !/^[6-9]\d{9}$/.test(phoneNumber)) {
-      setError('Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await axios.post('/api/auth/phone/send-otp', {
-        phone: phoneNumber
-      });
-
-      setMaskedPhone(res.data.phone);
-      setPhoneCooldown(res.data.cooldown_seconds || 60);
-      setSuccessMsg(res.data.message || 'OTP dispatched to your mobile number');
-      setPhoneStep('otp_verify');
-      setPhoneOtpValues(['', '', '', '', '', '']);
-      setTimeout(() => phoneOtpInputRefs.current[0]?.focus(), 100);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to dispatch SMS OTP. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    setUnverifiedEmailFound(false);
   };
 
-  const handlePhoneOtpBoxChange = (index, value) => {
-    const val = value.replace(/\D/g, '');
-    if (!val) {
-      const updated = [...phoneOtpValues];
-      updated[index] = '';
-      setPhoneOtpValues(updated);
-      return;
-    }
-
-    const updated = [...phoneOtpValues];
-    if (val.length > 1) {
-      const digits = val.slice(0, 6).split('');
-      for (let i = 0; i < 6; i++) {
-        updated[i] = digits[i] || '';
-      }
-      setPhoneOtpValues(updated);
-      const nextIndex = Math.min(digits.length, 5);
-      phoneOtpInputRefs.current[nextIndex]?.focus();
-      return;
-    }
-
-    updated[index] = val.slice(-1);
-    setPhoneOtpValues(updated);
-
-    if (index < 5 && val) {
-      phoneOtpInputRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handlePhoneOtpKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && !phoneOtpValues[index] && index > 0) {
-      phoneOtpInputRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handleVerifyPhoneOtp = async (e) => {
-    if (e) e.preventDefault();
-    const otpCode = phoneOtpValues.join('');
-    if (otpCode.length !== 6) {
-      setError('Please enter the full 6-digit OTP sent to your phone');
-      return;
-    }
-
-    setLoading(true);
+  // ── 1. Sign In Handler ────────────────────────────────────────────
+  const handleSignIn = async (e) => {
+    e.preventDefault();
     setError('');
+    setSuccessMsg('');
+    setUnverifiedEmailFound(false);
 
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      const res = await axios.post('/api/auth/phone/verify-otp', {
-        phone: phoneNumber,
-        otp_code: otpCode
+      const formData = new URLSearchParams();
+      formData.append('username', cleanEmail);
+      formData.append('password', password);
+
+      const res = await axios.post('/api/auth/login', formData, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
 
       login(res.data.access_token, res.data.user);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid or expired verification code');
+      const detail = err.response?.data?.detail || 'Authentication failed. Please verify your credentials.';
+      setError(detail);
+
+      // Check if unverified
+      if (detail.toLowerCase().includes('verify your email')) {
+        setUnverifiedEmailFound(true);
+        setTargetEmail(cleanEmail);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Email / Brevo OTP Flow Handlers ───────────────────────────────
-  const handleEmailSubmit = async (e) => {
+  // ── 2. Create Account Handler ─────────────────────────────────────
+  const handleCreateAccount = async (e) => {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
-    setShowVerifyNowBtn(false);
 
+    const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanName || cleanName.length < 2) {
+      setError('Please enter your full name (at least 2 characters).');
+      return;
+    }
+
     if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
-      setError('Please enter a valid email address');
+      setError('Please enter a valid email address.');
       return;
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters long');
+      setError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please re-enter your password.');
       return;
     }
 
     setLoading(true);
     try {
-      if (emailMode === 'login') {
-        const formData = new URLSearchParams();
-        formData.append('username', cleanEmail);
-        formData.append('password', password);
-        const res = await axios.post('/api/auth/login', formData, {
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-        });
+      const res = await axios.post('/api/auth/register', {
+        name: cleanName,
+        email: cleanEmail,
+        password: password
+      });
 
-        login(res.data.access_token, res.data.user);
-        navigate('/dashboard');
-      } else {
-        // Register flow: creates unverified user and sends 6-digit Brevo OTP
-        const res = await axios.post('/api/auth/register', {
-          email: cleanEmail,
-          password,
-          name: fullName || cleanEmail.split('@')[0]
-        });
-
-        setRegisteredEmail(cleanEmail);
-        setEmailStep('otp_verify');
-        setEmailCooldown(res.data.cooldown_seconds || 60);
-        setSuccessMsg(res.data.message || `6-digit verification code sent to ${cleanEmail}`);
-        setEmailOtpValues(['', '', '', '', '', '']);
-        setTimeout(() => emailOtpInputRefs.current[0]?.focus(), 100);
-      }
+      // Account created as unverified -> Transition to OTP screen
+      setTargetEmail(cleanEmail);
+      setAuthMode('verify_otp');
+      setCooldown(res.data.cooldown_seconds || 60);
+      setSuccessMsg(res.data.message || `A 6-digit verification code has been sent to ${cleanEmail}`);
+      setOtpValues(['', '', '', '', '', '']);
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 150);
     } catch (err) {
-      const detail = err.response?.data?.detail || 'Authentication failed. Please verify your credentials.';
-      setError(detail);
-      if (detail.includes('verify your email')) {
-        setShowVerifyNowBtn(true);
-        setRegisteredEmail(cleanEmail);
-      }
+      setError(err.response?.data?.detail || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSendEmailOtp = async (targetEmail) => {
-    const cleanMail = targetEmail || registeredEmail || email.trim().toLowerCase();
-    if (!cleanMail) return;
+  // ── 3. Send/Resend Email OTP Handler ──────────────────────────────
+  const handleSendOtpForVerification = async (target) => {
+    const emailToUse = target || targetEmail || email.trim().toLowerCase();
+    if (!emailToUse) return;
 
     setLoading(true);
     setError('');
     try {
-      const res = await axios.post('/api/auth/send-email-otp', { email: cleanMail });
-      setRegisteredEmail(cleanMail);
-      setEmailStep('otp_verify');
-      setEmailCooldown(res.data.cooldown_seconds || 60);
-      setSuccessMsg(res.data.message || `Verification code sent to ${cleanMail}`);
-      setEmailOtpValues(['', '', '', '', '', '']);
-      setTimeout(() => emailOtpInputRefs.current[0]?.focus(), 100);
+      const res = await axios.post('/api/auth/send-email-otp', { email: emailToUse });
+      setTargetEmail(emailToUse);
+      setAuthMode('verify_otp');
+      setCooldown(res.data.cooldown_seconds || 60);
+      setSuccessMsg(`Verification code sent to ${emailToUse}`);
+      setOtpValues(['', '', '', '', '', '']);
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 150);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to dispatch verification code.');
+      setError(err.response?.data?.detail || 'Unable to send verification code. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEmailOtpBoxChange = (index, value) => {
+  // ── 4. 6-Digit OTP Box Management ─────────────────────────────────
+  const handleOtpBoxChange = (index, value) => {
     const val = value.replace(/\D/g, '');
     if (!val) {
-      const updated = [...emailOtpValues];
+      const updated = [...otpValues];
       updated[index] = '';
-      setEmailOtpValues(updated);
+      setOtpValues(updated);
       return;
     }
 
-    const updated = [...emailOtpValues];
+    const updated = [...otpValues];
+    // Handle pasting multiple digits (e.g. 123456)
     if (val.length > 1) {
       const digits = val.slice(0, 6).split('');
       for (let i = 0; i < 6; i++) {
         updated[i] = digits[i] || '';
       }
-      setEmailOtpValues(updated);
+      setOtpValues(updated);
       const nextIndex = Math.min(digits.length, 5);
-      emailOtpInputRefs.current[nextIndex]?.focus();
+      otpInputRefs.current[nextIndex]?.focus();
       return;
     }
 
     updated[index] = val.slice(-1);
-    setEmailOtpValues(updated);
+    setOtpValues(updated);
 
     if (index < 5 && val) {
-      emailOtpInputRefs.current[index + 1]?.focus();
+      otpInputRefs.current[index + 1]?.focus();
     }
   };
 
-  const handleEmailOtpKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && !emailOtpValues[index] && index > 0) {
-      emailOtpInputRefs.current[index - 1]?.focus();
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otpValues[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
     }
   };
 
-  const handleVerifyEmailOtp = async (e) => {
+  // ── 5. Verify Email OTP Handler ───────────────────────────────────
+  const handleVerifyOtp = async (e) => {
     if (e) e.preventDefault();
-    const otpCode = emailOtpValues.join('');
+    const otpCode = otpValues.join('');
     if (otpCode.length !== 6) {
-      setError('Please enter the full 6-digit verification code sent to your email');
+      setError('Please enter the full 6-digit verification code.');
       return;
     }
 
@@ -283,20 +224,24 @@ export default function Login() {
 
     try {
       const res = await axios.post('/api/auth/verify-email-otp', {
-        email: registeredEmail || email.trim().toLowerCase(),
+        email: targetEmail,
         otp_code: otpCode
       });
 
+      setSuccessMsg('Email verified successfully! Welcome to Clip_Cut.');
       login(res.data.access_token, res.data.user);
-      navigate('/dashboard');
+      
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1000);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid or expired verification code');
+      setError(err.response?.data?.detail || 'Invalid or expired verification code. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Real Google OAuth Handler ─────────────────────────────────────
+  // ── 6. Google OAuth Success Handler ───────────────────────────────
   const handleGoogleSuccess = async (credentialResponse) => {
     setLoading(true);
     setError('');
@@ -309,8 +254,8 @@ export default function Login() {
       login(res.data.access_token, res.data.user);
       navigate('/dashboard');
     } catch (err) {
-      console.error('Google login error detail:', err);
-      setError(err.response?.data?.detail || err.response?.data?.message || err.message || 'Google authentication failed. Please try again.');
+      console.error('Google login error:', err);
+      setError(err.response?.data?.detail || 'Google authentication failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -323,29 +268,29 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#03070d]">
       
-      {/* 3D Three.js Cosmic Starfield Layer */}
+      {/* 3D Three.js Cosmic Starfield Background */}
       <Cosmic3DBackground particleCount={500} opacity={0.45} speed={0.05} />
 
-      {/* Dynamic Cyan & Ocean Teal Ambient Light Cones */}
+      {/* Ambient Neon Lighting Accents */}
       <div className="absolute inset-0 pointer-events-none z-0">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[800px] bg-gradient-to-b from-[#0e5c7a]/40 via-[#073042]/25 to-transparent rounded-full blur-[110px]"></div>
-        <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[380px] h-[380px] bg-[#1488b8]/25 rounded-full blur-[95px]"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[680px] h-[820px] bg-gradient-to-b from-[#0e5c7a]/35 via-[#073042]/20 to-transparent rounded-full blur-[120px]"></div>
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 w-[380px] h-[380px] bg-[#1488b8]/20 rounded-full blur-[100px]"></div>
       </div>
 
-      {/* Main Glass Portal Container */}
+      {/* Main Glass Authentication Portal */}
       <motion.div 
         initial={{ opacity: 0, scale: 0.96, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-[410px] rounded-[36px] p-7 sm:p-9 relative z-10 shadow-[0_30px_90px_rgba(0,0,0,0.9)]"
+        transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full max-w-[430px] rounded-[36px] p-7 sm:p-9 relative z-10 shadow-[0_30px_90px_rgba(0,0,0,0.9)]"
         style={{
-          background: 'linear-gradient(180deg, rgba(16, 42, 62, 0.82) 0%, rgba(7, 18, 30, 0.94) 100%)',
-          backdropFilter: 'blur(40px)',
-          WebkitBackdropFilter: 'blur(40px)',
+          background: 'linear-gradient(180deg, rgba(14, 38, 58, 0.86) 0%, rgba(6, 16, 26, 0.96) 100%)',
+          backdropFilter: 'blur(45px)',
+          WebkitBackdropFilter: 'blur(45px)',
           border: '1px solid rgba(255, 255, 255, 0.14)',
         }}
       >
-        {/* Subtle Decorative Elements */}
+        {/* Corner Accents */}
         <div className="corner-dot corner-dot-tl"></div>
         <div className="corner-dot corner-dot-tr"></div>
         <div className="corner-dot corner-dot-bl"></div>
@@ -353,349 +298,381 @@ export default function Login() {
 
         {/* Brand Header */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-400/20 text-cyan-300 text-[11px] font-bold tracking-wider uppercase mb-3">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-400/25 text-cyan-300 text-[11px] font-bold tracking-wider uppercase mb-3 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>AI Shorts Generator</span>
+            <span>AI Shorts Studio</span>
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            Clip <span className="font-serif-italic font-normal text-cyan-300">Cutter</span>
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            Clip<span className="font-serif-italic font-normal text-cyan-300">_Cut</span>
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            Transform long videos into viral 9:16 vertical shorts in seconds.
+            {authMode === 'verify_otp' 
+              ? 'Complete 6-digit email verification'
+              : 'Create viral vertical shorts with animated subtitles'}
           </p>
         </div>
 
-        {/* Global Feedback Banners */}
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-4 p-3 bg-red-500/15 border border-red-500/30 rounded-2xl flex flex-col gap-2 text-xs text-red-200"
-          >
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-            {showVerifyNowBtn && (
-              <button
-                type="button"
-                onClick={() => handleSendEmailOtp(registeredEmail || email)}
-                disabled={loading || emailCooldown > 0}
-                className="self-end text-[11px] font-bold text-cyan-300 hover:text-white underline cursor-pointer disabled:opacity-50"
-              >
-                {emailCooldown > 0 ? `Resend OTP in ${emailCooldown}s` : 'Send Verification OTP Now ➔'}
-              </button>
-            )}
-          </motion.div>
-        )}
-
-        {successMsg && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-4 p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl flex items-start gap-2 text-xs text-emerald-300"
-          >
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-            <span>{successMsg}</span>
-          </motion.div>
-        )}
-
-        {/* Top Auth Mode Tabs (Only shown when not in OTP step) */}
-        {phoneStep === 'phone_input' && emailStep === 'input' && (
-          <div className="flex bg-white/[0.05] p-1 rounded-2xl border border-white/[0.08] mb-5">
-            <button
-              type="button"
-              onClick={() => { setAuthMethod('phone'); setError(''); setSuccessMsg(''); setShowVerifyNowBtn(false); }}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                authMethod === 'phone'
-                  ? 'bg-white text-black font-extrabold shadow-lg'
-                  : 'text-gray-400 hover:text-white'
-              }`}
+        {/* Feedback Alerts */}
+        <AnimatePresence mode="wait">
+          {error && (
+            <motion.div
+              key="error-box"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              className="mb-4 p-3.5 bg-red-500/15 border border-red-500/30 rounded-2xl flex flex-col gap-2 text-xs text-red-200"
             >
-              <Smartphone className="w-3.5 h-3.5" /> Phone OTP
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAuthMethod('email'); setError(''); setSuccessMsg(''); setShowVerifyNowBtn(false); }}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                authMethod === 'email'
-                  ? 'bg-white text-black font-extrabold shadow-lg'
-                  : 'text-gray-400 hover:text-white'
-              }`}
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                <span className="leading-snug">{error}</span>
+              </div>
+              {unverifiedEmailFound && (
+                <button
+                  type="button"
+                  onClick={() => handleSendOtpForVerification(targetEmail)}
+                  disabled={loading}
+                  className="self-end px-3 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 rounded-lg text-[11px] font-extrabold text-cyan-300 hover:text-white cursor-pointer transition-all disabled:opacity-50"
+                >
+                  Verify Email Now ➔
+                </button>
+              )}
+            </motion.div>
+          )}
+
+          {successMsg && (
+            <motion.div
+              key="success-box"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              className="mb-4 p-3.5 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-300"
             >
-              <Mail className="w-3.5 h-3.5" /> Email
-            </button>
-          </div>
-        )}
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+              <span className="leading-snug">{successMsg}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* ── 1. PHONE OTP FLOW ──────────────────────────────────────── */}
-        {authMethod === 'phone' && (
-          <>
-            {phoneStep === 'phone_input' ? (
-              <form onSubmit={handleSendPhoneOtp} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                    Indian Mobile Number
-                  </label>
-                  <div className="relative">
-                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs font-bold text-gray-400 border-r border-white/10 pr-2">
-                      <span>🇮🇳</span>
-                      <span>+91</span>
-                    </div>
-                    <input
-                      type="tel"
-                      value={phoneNumber}
-                      onChange={handlePhoneChange}
-                      placeholder="98765 43210"
-                      className="w-full pl-20 pr-4 py-3 bg-white/[0.06] border border-white/[0.12] rounded-2xl text-xs text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400/50 transition-all font-mono tracking-wider"
-                      autoFocus
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading || phoneNumber.length !== 10}
-                  className="w-full py-3.5 btn-premium-solid text-xs uppercase tracking-wider font-extrabold shadow-xl cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loading ? 'Dispatching OTP...' : 'Send 6-Digit OTP'}
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleVerifyPhoneOtp} className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => { setPhoneStep('phone_input'); setError(''); }}
-                    className="text-[11px] text-gray-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
-                  >
-                    <ArrowLeft className="w-3 h-3" /> Change Number
-                  </button>
-                  <span className="text-[11px] text-cyan-300 font-mono font-bold">
-                    +91 {maskedPhone}
-                  </span>
-                </div>
-
-                {/* 6-Digit Pin Input Matrix */}
-                <div className="flex justify-between gap-1.5 py-1">
-                  {phoneOtpValues.map((digit, idx) => (
-                    <input
-                      key={idx}
-                      ref={(el) => (phoneOtpInputRefs.current[idx] = el)}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handlePhoneOtpBoxChange(idx, e.target.value)}
-                      onKeyDown={(e) => handlePhoneOtpKeyDown(idx, e)}
-                      className="w-11 h-12 text-center text-base font-bold bg-white/[0.06] border border-white/[0.14] rounded-xl text-white focus:outline-none focus:border-cyan-400 focus:bg-white/[0.1] transition-all font-mono"
-                    />
-                  ))}
-                </div>
-
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-gray-400">Didn't receive SMS?</span>
-                  <button
-                    type="button"
-                    onClick={handleSendPhoneOtp}
-                    disabled={phoneCooldown > 0 || loading}
-                    className="text-cyan-300 hover:text-white font-bold transition-colors disabled:opacity-50 cursor-pointer"
-                  >
-                    {phoneCooldown > 0 ? `Resend OTP (${phoneCooldown}s)` : 'Resend SMS OTP'}
-                  </button>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading || phoneOtpValues.join('').length !== 6}
-                  className="w-full py-3.5 btn-premium-solid text-xs uppercase tracking-wider font-extrabold shadow-xl cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loading ? 'Verifying OTP...' : 'Verify Code & Sign In'}
-                </button>
-              </form>
-            )}
-          </>
-        )}
-
-        {/* ── 2. EMAIL & BREVO OTP FLOW ──────────────────────────────── */}
-        {authMethod === 'email' && (
-          <>
-            {emailStep === 'input' ? (
-              <form onSubmit={handleEmailSubmit} className="space-y-4">
-                {emailMode === 'register' && (
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                      Full Name
-                    </label>
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Alex Lee"
-                      className="w-full px-4 py-3 bg-white/[0.06] border border-white/[0.12] rounded-2xl text-xs text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400/50 transition-all"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                    Email Address
-                  </label>
+        {/* ── 1. MODE: SIGN IN ────────────────────────────────────────── */}
+        {authMode === 'signin' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <form onSubmit={handleSignIn} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-1.5">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@gmail.com"
-                    className="w-full px-4 py-3 bg-white/[0.06] border border-white/[0.12] rounded-2xl text-xs text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400/50 transition-all"
+                    placeholder="creator@example.com"
+                    className="w-full pl-10 pr-4 py-3 bg-white/[0.06] border border-white/[0.12] rounded-2xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-all"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
                     Password
                   </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full px-4 py-3 bg-white/[0.06] border border-white/[0.12] rounded-2xl text-xs text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400/50 transition-all pr-10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer transition-colors"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between text-[11px] pt-0.5">
                   <button
                     type="button"
-                    onClick={() => {
-                      setEmail('test@test.com');
-                      setPassword('test@123');
-                      setEmailMode('login');
-                    }}
-                    className="text-gray-400 hover:text-[#b8f032] transition-colors cursor-pointer"
+                    onClick={() => alert("To reset your password, please contact support or verify via registered email.")}
+                    className="text-[11px] text-cyan-300 hover:text-white transition-colors cursor-pointer"
                   >
-                    Admin Autofill
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmailMode(emailMode === 'login' ? 'register' : 'login');
-                      setError('');
-                      setShowVerifyNowBtn(false);
-                    }}
-                    className="text-[#b8f032] font-bold hover:underline cursor-pointer"
-                  >
-                    {emailMode === 'login' ? 'Create an account' : 'Already registered? Sign In'}
+                    Forgot Password?
                   </button>
                 </div>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-10 py-3 bg-white/[0.06] border border-white/[0.12] rounded-2xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
 
+              {/* Admin Autofill Quick Demo Button */}
+              <div className="flex justify-end pt-0.5">
                 <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3.5 btn-premium-solid text-xs uppercase tracking-wider font-extrabold shadow-xl cursor-pointer disabled:opacity-50 mt-1 flex items-center justify-center gap-2"
+                  type="button"
+                  onClick={() => {
+                    setEmail('test@test.com');
+                    setPassword('test@123');
+                  }}
+                  className="text-[10px] text-gray-500 hover:text-[#b8f032] transition-colors cursor-pointer"
                 >
-                  {loading ? 'Processing...' : (emailMode === 'login' ? 'Sign In with Email' : 'Create Account & Send OTP')}
+                  Admin Autofill
                 </button>
-              </form>
-            ) : (
-              /* 6-Digit Email OTP Verification Screen */
-              <form onSubmit={handleVerifyEmailOtp} className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => { setEmailStep('input'); setError(''); }}
-                    className="text-[11px] text-gray-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
-                  >
-                    <ArrowLeft className="w-3 h-3" /> Change Email
-                  </button>
-                  <span className="text-[11px] text-cyan-300 font-mono font-bold truncate max-w-[190px]">
-                    {registeredEmail || email}
-                  </span>
-                </div>
+              </div>
 
-                <div className="text-center py-1">
-                  <span className="text-xs font-semibold text-gray-300">
-                    Enter the 6-digit code sent by Brevo:
-                  </span>
-                </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 btn-premium-solid text-xs uppercase tracking-wider font-extrabold shadow-xl cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? 'Authenticating...' : 'Sign In'}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
 
-                {/* 6-Digit Pin Input Matrix */}
-                <div className="flex justify-between gap-1.5 py-1">
-                  {emailOtpValues.map((digit, idx) => (
-                    <input
-                      key={idx}
-                      ref={(el) => (emailOtpInputRefs.current[idx] = el)}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handleEmailOtpBoxChange(idx, e.target.value)}
-                      onKeyDown={(e) => handleEmailOtpKeyDown(idx, e)}
-                      className="w-11 h-12 text-center text-base font-bold bg-white/[0.06] border border-white/[0.14] rounded-xl text-white focus:outline-none focus:border-cyan-400 focus:bg-white/[0.1] transition-all font-mono"
-                    />
-                  ))}
-                </div>
+            {/* Google OAuth Button */}
+            <div className="relative my-5 flex items-center justify-center">
+              <div className="w-full border-t border-white/[0.1]"></div>
+              <span className="absolute px-3 text-[11px] text-gray-400 font-medium" style={{ background: 'rgba(10, 26, 40, 0.95)' }}>
+                Or continue with
+              </span>
+            </div>
 
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-gray-400">Didn't receive email?</span>
-                  <button
-                    type="button"
-                    onClick={() => handleSendEmailOtp(registeredEmail || email)}
-                    disabled={emailCooldown > 0 || loading}
-                    className="text-cyan-300 hover:text-white font-bold transition-colors disabled:opacity-50 cursor-pointer"
-                  >
-                    {emailCooldown > 0 ? `Resend Code (${emailCooldown}s)` : 'Resend Email OTP'}
-                  </button>
-                </div>
+            <div className="flex justify-center w-full">
+              <div className="w-full flex justify-center scale-[0.98]">
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={handleGoogleError}
+                  theme="filled_black"
+                  shape="pill"
+                  size="large"
+                  text="continue_with"
+                  width="340"
+                />
+              </div>
+            </div>
 
-                <button
-                  type="submit"
-                  disabled={loading || emailOtpValues.join('').length !== 6}
-                  className="w-full py-3.5 btn-premium-solid text-xs uppercase tracking-wider font-extrabold shadow-xl cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loading ? 'Verifying OTP...' : 'Verify Code & Activate Account'}
-                </button>
-              </form>
-            )}
-          </>
+            {/* Switch to Create Account */}
+            <div className="text-center mt-5 pt-4 border-t border-white/[0.08]">
+              <span className="text-xs text-gray-400">Don't have an account? </span>
+              <button
+                type="button"
+                onClick={() => switchMode('signup')}
+                className="text-xs font-bold text-[#b8f032] hover:underline cursor-pointer ml-1"
+              >
+                Create an account
+              </button>
+            </div>
+          </motion.div>
         )}
 
-        {/* ── 3. REAL GOOGLE OAUTH 2.0 LOGIN BUTTON ──────────────────── */}
-        <div className="relative my-5 flex items-center justify-center">
-          <div className="w-full border-t border-white/[0.1]"></div>
-          <span className="absolute px-3 text-[11px] text-gray-400 font-medium" style={{ background: 'rgba(12, 30, 46, 0.9)' }}>
-            Or continue with
-          </span>
-        </div>
+        {/* ── 2. MODE: CREATE ACCOUNT ─────────────────────────────────── */}
+        {authMode === 'signup' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <form onSubmit={handleCreateAccount} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-1">
+                  Full Name
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Alex Lee"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.06] border border-white/[0.12] rounded-2xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-all"
+                  />
+                </div>
+              </div>
 
-        <div className="flex justify-center w-full">
-          <div className="w-full flex justify-center scale-[0.98]">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-              theme="filled_black"
-              shape="pill"
-              size="large"
-              text="continue_with"
-              width="340"
-            />
-          </div>
-        </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-1">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="creator@example.com"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.06] border border-white/[0.12] rounded-2xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-all"
+                  />
+                </div>
+              </div>
 
-        {/* Security / Encryption Guarantee */}
+              <div>
+                <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-1">
+                  Password (min 6 characters)
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-10 py-2.5 bg-white/[0.06] border border-white/[0.12] rounded-2xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-1">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-10 py-2.5 bg-white/[0.06] border border-white/[0.12] rounded-2xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer transition-colors"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 btn-premium-solid text-xs uppercase tracking-wider font-extrabold shadow-xl cursor-pointer disabled:opacity-50 mt-2 flex items-center justify-center gap-2"
+              >
+                {loading ? 'Creating Account & Sending OTP...' : 'Create Account'}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
+
+            {/* Google OAuth Button */}
+            <div className="relative my-4 flex items-center justify-center">
+              <div className="w-full border-t border-white/[0.1]"></div>
+              <span className="absolute px-3 text-[11px] text-gray-400 font-medium" style={{ background: 'rgba(10, 26, 40, 0.95)' }}>
+                Or continue with
+              </span>
+            </div>
+
+            <div className="flex justify-center w-full">
+              <div className="w-full flex justify-center scale-[0.98]">
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={handleGoogleError}
+                  theme="filled_black"
+                  shape="pill"
+                  size="large"
+                  text="continue_with"
+                  width="340"
+                />
+              </div>
+            </div>
+
+            {/* Switch to Sign In */}
+            <div className="text-center mt-4 pt-3.5 border-t border-white/[0.08]">
+              <span className="text-xs text-gray-400">Already have an account? </span>
+              <button
+                type="button"
+                onClick={() => switchMode('signin')}
+                className="text-xs font-bold text-[#b8f032] hover:underline cursor-pointer ml-1"
+              >
+                Sign In
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── 3. MODE: VERIFY EMAIL OTP ───────────────────────────────── */}
+        {authMode === 'verify_otp' && (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div className="text-center space-y-1.5 pb-2">
+                <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center mx-auto text-cyan-300 shadow-[0_0_20px_rgba(6,182,212,0.25)] mb-2">
+                  <Mail className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-extrabold text-white">Verify Your Email</h3>
+                <p className="text-xs text-gray-300">
+                  Enter the 6-digit code sent to:
+                </p>
+                <p className="text-xs font-mono font-bold text-cyan-300 break-all px-2 py-0.5 bg-black/40 rounded-lg inline-block">
+                  {targetEmail}
+                </p>
+              </div>
+
+              {/* 6 Individual 1-Digit OTP Boxes */}
+              <div className="flex justify-between gap-1.5 py-1">
+                {otpValues.map((digit, idx) => (
+                  <input
+                    key={idx}
+                    ref={(el) => (otpInputRefs.current[idx] = el)}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleOtpBoxChange(idx, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                    className="w-11 h-12 text-center text-base font-black bg-white/[0.07] border border-white/[0.16] rounded-xl text-white focus:outline-none focus:border-cyan-400 focus:bg-white/[0.12] transition-all font-mono"
+                  />
+                ))}
+              </div>
+
+              {/* Expiration Note & Resend Secondary Action */}
+              <div className="flex justify-between items-center text-[11px] pt-1">
+                <span className="text-gray-400">⏱️ Valid for 5 mins</span>
+                <button
+                  type="button"
+                  onClick={() => handleSendOtpForVerification(targetEmail)}
+                  disabled={cooldown > 0 || loading}
+                  className="text-cyan-300 hover:text-white font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend Code'}
+                </button>
+              </div>
+
+              {/* Primary Verify Button */}
+              <button
+                type="submit"
+                disabled={loading || otpValues.join('').length !== 6}
+                className="w-full py-3.5 btn-premium-solid text-xs uppercase tracking-wider font-extrabold shadow-xl cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
+              >
+                {loading ? 'Verifying Code...' : 'Verify Email'}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+
+              {/* Back Option */}
+              <div className="text-center pt-2 border-t border-white/[0.08]">
+                <button
+                  type="button"
+                  onClick={() => switchMode('signin')}
+                  className="text-xs text-gray-400 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 mx-auto"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Change Email / Back to Sign In</span>
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        )}
+
+        {/* Security / Brevo Encryption Guarantee */}
         <div className="mt-6 pt-4 border-t border-white/[0.08] flex items-center justify-center gap-1.5 text-[10px] text-gray-400 uppercase tracking-widest font-bold">
           <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
           <span>Brevo Verified • 256-Bit Cryptographic Security</span>
