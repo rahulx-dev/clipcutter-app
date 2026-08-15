@@ -56,6 +56,13 @@ export default function ClipEditor() {
           });
           if (isCancelledRef.current) return; // Discard stale response if cancelled
 
+          // If backend reports PENDING, source video is ready and awaiting user design selection!
+          if (res.data.status === 'PENDING') {
+            setProcessing(false);
+            fetchProject();
+            return;
+          }
+
           setProgress(res.data.progress || 0);
           setProgressMsg(res.data.progress_message || 'Processing AI pipeline...');
 
@@ -97,8 +104,11 @@ export default function ClipEditor() {
       if (res.data.clips && res.data.clips.length > 0) {
         setSelectedClip(res.data.clips[0]);
       }
+      // ONLY set processing to true if active pipeline steps are executing!
       if (['PROCESSING', 'TRANSCRIBING', 'SEGMENTING', 'GENERATING_METADATA'].includes(res.data.status)) {
         setProcessing(true);
+      } else {
+        setProcessing(false);
       }
     } catch (err) {
       console.error(err);
@@ -108,9 +118,15 @@ export default function ClipEditor() {
   };
 
   const handleStartProcessing = async () => {
+    if (!selectedStyle) {
+      alert("Please select a caption design first.");
+      return;
+    }
     try {
       isCancelledRef.current = false;
       setProcessing(true);
+      setProgress(5);
+      setProgressMsg('Initializing AI pipeline & subtitle engine...');
       const res = await axios.post(`/api/process/${id}`, {
         caption_style: selectedStyle,
         shorts_count: shortsCount,

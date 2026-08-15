@@ -96,8 +96,8 @@ async def _background_download(url: str, project_id: int):
                 project.duration_seconds = result.get("duration") or meta.get("duration")
                 project.video_metadata = meta
                 project.status = ProjectStatus.PENDING
-                project.progress = 100.0
-                project.progress_message = "Video downloaded & ready — please select your caption design"
+                project.progress = 0.0
+                project.progress_message = "Source video downloaded successfully"
                 await session.commit()
     except Exception as e:
         async with AsyncSessionLocal() as session:
@@ -135,8 +135,8 @@ async def youtube_project(
         source_type=SourceType.YOUTUBE,
         source_url=req.url,
         status=ProjectStatus.PENDING,
-        progress=100.0,
-        progress_message="YouTube video queued — ready for design selection",
+        progress=0.0,
+        progress_message="Source video ready — choose caption template",
     )
     db.add(project)
     await db.commit()
