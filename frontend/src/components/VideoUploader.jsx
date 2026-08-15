@@ -8,10 +8,12 @@ import axios from 'axios';
 import { useAuth } from '../App';
 
 export default function VideoUploader({ isOpen, onClose, onSuccess }) {
-  const [tab, setTab] = useState('upload');
+  const [tab, setTab] = useState('youtube');
   const [title, setTitle] = useState('');
   const [file, setFile] = useState(null);
   const [url, setUrl] = useState('');
+  const [languagePref, setLanguagePref] = useState('auto');
+  const [shortsCount, setShortsCount] = useState(4);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -38,7 +40,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title) return alert("Please provide a project title");
+    if (!title || !title.trim()) return alert("Please provide a valid project name");
     
     setUploading(true);
     setProgress(0);
@@ -49,7 +51,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
         if (!file) return alert("Please select a video file");
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('title', title);
+        formData.append('title', title.trim());
         
         res = await axios.post('/api/projects/upload', formData, {
           headers: { 
@@ -62,8 +64,11 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
           }
         });
       } else {
-        if (!url) return alert("Please provide a YouTube video URL");
-        res = await axios.post('/api/projects/youtube', { title, url }, {
+        if (!url || !url.trim()) return alert("Please provide a valid YouTube video URL");
+        res = await axios.post('/api/projects/youtube', { 
+          title: title.trim(), 
+          url: url.trim() 
+        }, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         setProgress(100);
@@ -71,10 +76,14 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
       
       const createdProject = res.data;
 
-      // Refresh credits immediately
+      // Pass user selected language and shorts count along with project
+      createdProject.language_preference = languagePref;
+      createdProject.target_shorts_count = shortsCount;
+
+      // Refresh credits
       if (refreshUser) refreshUser();
 
-      // Navigate to dedicated Caption Studio page
+      // Proceed to Step 2: "Select a Design" page
       onSuccess(createdProject);
     } catch (error) {
       console.error("Video submission error:", error);
@@ -116,8 +125,8 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
                 <Zap className="w-4 h-4 text-[#b8f032] fill-[#b8f032]" />
               </div>
               <div>
-                <h2 className="text-base font-extrabold text-white tracking-tight">Step 1: Upload Source Video</h2>
-                <p className="text-[10px] text-gray-400">Add your video file or YouTube URL to begin</p>
+                <h2 className="text-base font-extrabold text-white tracking-tight">Create Viral Short</h2>
+                <p className="text-[10px] text-gray-400">Step 1: Enter link, language & target shorts</p>
               </div>
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors cursor-pointer p-1">
@@ -125,18 +134,9 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
             </button>
           </div>
 
-          <div className="p-5 sm:p-6 space-y-5">
+          <div className="p-5 sm:p-6 space-y-4">
             {/* Tab switchers */}
             <div className="flex space-x-2 bg-white/[0.04] p-1 rounded-full border border-white/10">
-              <button 
-                type="button"
-                onClick={() => setTab('upload')}
-                className={`flex-1 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  tab === 'upload' ? 'bg-white text-black font-extrabold shadow' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <Upload className="w-3.5 h-3.5 inline mr-1.5" /> Video File Upload
-              </button>
               <button 
                 type="button"
                 onClick={() => setTab('youtube')}
@@ -146,77 +146,128 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
               >
                 <LinkIcon className="w-3.5 h-3.5 inline mr-1.5" /> YouTube URL
               </button>
+              <button 
+                type="button"
+                onClick={() => setTab('upload')}
+                className={`flex-1 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                  tab === 'upload' ? 'bg-white text-black font-extrabold shadow' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5 inline mr-1.5" /> Video File Upload
+              </button>
             </div>
 
-            {/* Title Input */}
+            {/* Input 1: Project Name */}
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-300 mb-1.5">Project Title</label>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-300 mb-1.5">
+                1. Project Name <span className="text-[#b8f032]">*</span>
+              </label>
               <input 
                 type="text" 
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full px-4 py-2.5 bg-black/60 border border-white/15 rounded-2xl focus:outline-none focus:border-[#b8f032] text-white text-sm"
-                placeholder="e.g. Alex Hormozi Podcast Highlights"
+                placeholder="e.g. Alex Hormozi Million Dollar Advice"
                 disabled={uploading}
               />
             </div>
 
-            {/* Ingestion Source */}
-            {tab === 'upload' ? (
-              <div 
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handleDrop}
-                className={`border-2 border-dashed rounded-3xl p-6 text-center transition-all ${
-                  file 
-                    ? 'border-[#b8f032] bg-[#b8f032]/[0.06]' 
-                    : 'border-white/15 hover:border-[#b8f032]/50 hover:bg-white/[0.02]'
-                }`}
-              >
-                <input type="file" id="file-upload" className="hidden" accept=".mp4,.mov,.webm" onChange={handleFileSelect} disabled={uploading} />
-                <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
-                  {file ? (
-                    <>
-                      <FileVideo className="w-9 h-9 text-[#b8f032] mb-2" />
-                      <p className="text-white font-bold text-sm truncate max-w-xs">{file.name}</p>
-                      <div className="flex items-center gap-3 text-xs text-gray-400 mt-1.5">
-                        <span>{(file.size / (1024 * 1024)).toFixed(2)} MB</span>
-                        <span>•</span>
-                        <span className="text-[#b8f032] font-semibold flex items-center gap-1">
-                          <CheckCircle className="w-3 h-3" /> Ready
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                      <p className="text-gray-200 font-bold text-xs sm:text-sm">Drag and drop your video file here</p>
-                      <p className="text-[11px] text-gray-500 mt-0.5">Supports MP4, MOV, WebM up to 2GB</p>
-                      <span className="mt-3 px-4 py-1.5 bg-white/10 hover:bg-white/20 rounded-full text-xs font-bold text-white transition-colors">
-                        Browse Files
-                      </span>
-                    </>
-                  )}
-                </label>
-              </div>
-            ) : (
+            {/* Input 2: YouTube URL or File Upload */}
+            {tab === 'youtube' ? (
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-300 mb-1.5">YouTube Video URL</label>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-300 mb-1.5">
+                  2. YouTube Video Link <span className="text-[#b8f032]">*</span>
+                </label>
                 <input 
                   type="url" 
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   className="w-full px-4 py-2.5 bg-black/60 border border-white/15 rounded-2xl focus:outline-none focus:border-[#b8f032] text-white text-sm"
-                  placeholder="https://www.youtube.com/watch?v=..."
+                  placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
                   disabled={uploading}
                 />
               </div>
+            ) : (
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-300 mb-1.5">
+                  2. Select Video File <span className="text-[#b8f032]">*</span>
+                </label>
+                <div 
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleDrop}
+                  className={`border-2 border-dashed rounded-3xl p-5 text-center transition-all ${
+                    file 
+                      ? 'border-[#b8f032] bg-[#b8f032]/[0.06]' 
+                      : 'border-white/15 hover:border-[#b8f032]/50 hover:bg-white/[0.02]'
+                  }`}
+                >
+                  <input type="file" id="file-upload" className="hidden" accept=".mp4,.mov,.webm" onChange={handleFileSelect} disabled={uploading} />
+                  <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
+                    {file ? (
+                      <>
+                        <FileVideo className="w-8 h-8 text-[#b8f032] mb-1.5" />
+                        <p className="text-white font-bold text-xs truncate max-w-xs">{file.name}</p>
+                        <span className="text-[10px] text-gray-400 mt-1">{(file.size / (1024 * 1024)).toFixed(2)} MB Ready</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-7 h-7 text-gray-400 mb-1.5" />
+                        <p className="text-gray-200 font-bold text-xs">Drag and drop video here</p>
+                        <span className="mt-2 px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full text-[11px] font-bold text-white transition-colors">
+                          Browse Files
+                        </span>
+                      </>
+                    )}
+                  </label>
+                </div>
+              </div>
             )}
+
+            {/* Row with Options 3 & 4 */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              {/* Option 3: Select Language */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-300 mb-1.5 flex items-center gap-1">
+                  <Globe className="w-3 h-3 text-[#b8f032]" /> 3. Language AI
+                </label>
+                <select 
+                  value={languagePref}
+                  onChange={(e) => setLanguagePref(e.target.value)}
+                  className="w-full px-3 py-2 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#b8f032] cursor-pointer"
+                  disabled={uploading}
+                >
+                  <option value="auto">Auto Detect</option>
+                  <option value="hi">Hindi (हिंदी)</option>
+                  <option value="hinglish">Hinglish (Roman Hindi)</option>
+                  <option value="en">English (US/UK)</option>
+                </select>
+              </div>
+
+              {/* Option 4: How Many Shorts */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-300 mb-1.5 flex items-center gap-1">
+                  <Film className="w-3 h-3 text-[#b8f032]" /> 4. How Many Shorts
+                </label>
+                <select 
+                  value={shortsCount}
+                  onChange={(e) => setShortsCount(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#b8f032] cursor-pointer"
+                  disabled={uploading}
+                >
+                  <option value={1}>1 Viral Short</option>
+                  <option value={3}>3 Viral Shorts</option>
+                  <option value={4}>4 Viral Shorts (Recommended)</option>
+                  <option value={10}>10 Viral Shorts</option>
+                  <option value={0}>Max Possible Shorts</option>
+                </select>
+              </div>
+            </div>
 
             {/* Upload Progress */}
             {uploading && (
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 pt-2">
                 <div className="flex justify-between text-xs text-gray-400">
-                  <span className="text-white font-bold">Uploading video...</span>
+                  <span className="text-white font-bold">Ingesting video source...</span>
                   <span>{progress}%</span>
                 </div>
                 <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
@@ -228,23 +279,25 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
               </div>
             )}
 
-            {/* Submit Button (Takes user to Step 2: Caption Selection Studio) */}
-            <button
-              onClick={handleSubmit}
-              disabled={uploading || (tab === 'upload' ? !file : !url) || !title}
-              className="w-full btn-ai-glow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <div className="btn-ai-glow-inner py-3.5 text-xs font-extrabold uppercase tracking-wider w-full flex items-center justify-center gap-2">
-                {uploading ? (
-                  <span>Ingesting Source Video...</span>
-                ) : (
-                  <>
-                    <span>Next: Choose Caption Style & Generate</span>
-                    <ArrowRight className="w-4 h-4 stroke-[3]" />
-                  </>
-                )}
-              </div>
-            </button>
+            {/* Step 1 Button: PROCEED */}
+            <div className="pt-2">
+              <button
+                onClick={handleSubmit}
+                disabled={uploading || (tab === 'upload' ? !file : !url) || !title}
+                className="w-full btn-ai-glow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="btn-ai-glow-inner py-3.5 text-xs font-black uppercase tracking-wider w-full flex items-center justify-center gap-2">
+                  {uploading ? (
+                    <span>Ingesting Video...</span>
+                  ) : (
+                    <>
+                      <span>Proceed to Choose Design</span>
+                      <ArrowRight className="w-4 h-4 stroke-[3]" />
+                    </>
+                  )}
+                </div>
+              </button>
+            </div>
           </div>
         </motion.div>
       </div>

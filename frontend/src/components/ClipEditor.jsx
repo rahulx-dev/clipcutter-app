@@ -320,11 +320,14 @@ export default function ClipEditor() {
           </div>
 
           <div className="text-center max-w-2xl mx-auto">
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-white mb-2 tracking-tight">
-              Select Your <span className="font-serif-italic text-[#b8f032]">Caption Aesthetic</span>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#b8f032]/10 border border-[#b8f032]/30 text-[#b8f032] text-[11px] font-black uppercase tracking-widest mb-2">
+              <Sparkles className="w-3.5 h-3.5" /> Step 2: Choose Template
+            </div>
+            <h1 className="text-3xl sm:text-5xl font-black text-white mb-2 tracking-tight">
+              Select a <span className="font-serif-italic text-[#b8f032]">Design</span>
             </h1>
-            <p className="text-gray-400 text-xs sm:text-sm">
-              Click any caption design to preview. Our Whisper AI will automatically detect words, burn synchronized animations, and track faces to 9:16 framing.
+            <p className="text-gray-400 text-xs sm:text-sm max-w-xl mx-auto">
+              Choose from 28 high-retention viral auto-caption designs. Click any template to preview its styling before generating.
             </p>
           </div>
 

@@ -150,6 +150,78 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
         active_format = "{\\c&H0000FF&\\fscx120\\fscy120}"
         inactive_format = "{\\c&H00FFFF00&}"
         uppercase = True
+    elif style == 'tiktok_trending':
+        # 17. TikTok Trending (Cyan/White punch)
+        header += "Style: Default,Impact,74,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,20,20,380,1\n"
+        active_format = "{\\c&HFFFF00&\\fscx115\\fscy115}"
+        inactive_format = "{\\c&H00FFFFFF&}"
+        uppercase = True
+    elif style == 'podcast_spotlight':
+        # 18. Podcast Spotlight (Warm amber studio)
+        header += "Style: Default,Arial,68,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,390,1\n"
+        active_format = "{\\c&H00BFFF&\\fscx112\\fscy112}"
+        inactive_format = "{\\c&H00E0E0E0&}"
+        uppercase = False
+    elif style == 'emerald_focus':
+        # 19. Deep Focus Emerald (Rich emerald green)
+        header += "Style: Default,Arial,70,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,380,1\n"
+        active_format = "{\\c&H50C878&\\fscx115\\fscy115}"
+        inactive_format = "{\\c&H00E6E6E6&}"
+        uppercase = False
+    elif style == 'midnight_pink':
+        # 20. Midnight Neon Pink (Hot neon pink)
+        header += "Style: Default,Impact,72,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,20,20,380,1\n"
+        active_format = "{\\c&HB400FF&\\fscx118\\fscy118}"
+        inactive_format = "{\\c&H00FFFFFF&}"
+        uppercase = True
+    elif style == 'vlog_casual':
+        # 21. Vlog Casual (Warm relaxed yellow)
+        header += "Style: Default,Arial,66,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,390,1\n"
+        active_format = "{\\c&H00E6FF&\\fscx110\\fscy110}"
+        inactive_format = "{\\c&H00FFFFFF&}"
+        uppercase = False
+    elif style == 'cinematic_gold':
+        # 22. Cinematic Gold (Editorial serif)
+        header += "Style: Default,Times New Roman,74,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,390,1\n"
+        active_format = "{\\c&H00D7FF&\\fscx110\\fscy110}"
+        inactive_format = "{\\c&H00DCDCDC&}"
+        uppercase = True
+    elif style == 'kinetic_fast':
+        # 23. Kinetic Fast Paced (High retention punch)
+        header += "Style: Default,Impact,76,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,20,20,380,1\n"
+        active_format = "{\\c&H00FF00&\\fscx120\\fscy120}"
+        inactive_format = "{\\c&H00FFFFFF&}"
+        uppercase = True
+    elif style == 'crimson_shadow':
+        # 24. Crimson Shadow (Thriller deep red)
+        header += "Style: Default,Impact,74,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,20,20,380,1\n"
+        active_format = "{\\c&H0000D0&\\fscx115\\fscy115}"
+        inactive_format = "{\\c&H00E0E0E0&}"
+        uppercase = True
+    elif style == 'ice_hologram':
+        # 25. Ice Hologram (Ice blue futuristic)
+        header += "Style: Default,Arial,68,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,380,1\n"
+        active_format = "{\\c&HFFFF80&\\fscx115\\fscy115}"
+        inactive_format = "{\\c&H00FFFFFF&}"
+        uppercase = False
+    elif style == 'tech_mono':
+        # 26. Tech Monologue (JetBrains mono green)
+        header += "Style: Default,Courier New,66,&H0000FF00,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,400,1\n"
+        active_format = "{\\c&H00FF7F&\\fscx112\\fscy112}"
+        inactive_format = "{\\c&H0033CC33&}"
+        uppercase = False
+    elif style == 'peak_motivation':
+        # 27. Peak Motivation (Hyper fire flame)
+        header += "Style: Default,Impact,76,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,20,20,380,1\n"
+        active_format = "{\\c&H0045FF&\\fscx118\\fscy118}"
+        inactive_format = "{\\c&H00FFFFFF&}"
+        uppercase = True
+    elif style == 'subtle_lower_third':
+        # 28. Subtle Lower Third (Clean modern minimal bar)
+        header += "Style: Default,Arial,60,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,3,0,0,2,20,20,420,1\n"
+        active_format = "{\\c&H00FFFFFF&\\fscx108\\fscy108}"
+        inactive_format = "{\\c&H00D0D0D0&}"
+        uppercase = False
     else:
         header += "Style: Default,Impact,75,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,20,20,380,1\n"
         active_format = "{\\c&H00FFFF&\\fscx110\\fscy110}"

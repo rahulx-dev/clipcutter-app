@@ -15,7 +15,10 @@ ALLOWED_STYLES = [
     'hormozi', 'neon_cyber', 'minimal', 'dynamic',
     'beast_red', 'karaoke_green', 'golden_luxury', 'sunset_orange',
     'ali_abdaal', 'iman_gadzhi', 'retro_arcade', 'neon_violet',
-    'electric_blue', 'matrix_terminal', 'impact_white', 'comic_pop'
+    'electric_blue', 'matrix_terminal', 'impact_white', 'comic_pop',
+    'tiktok_trending', 'podcast_spotlight', 'emerald_focus', 'midnight_pink',
+    'vlog_casual', 'cinematic_gold', 'kinetic_fast', 'crimson_shadow',
+    'ice_hologram', 'tech_mono', 'peak_motivation', 'subtle_lower_third'
 ]
 
 
