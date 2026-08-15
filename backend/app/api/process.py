@@ -18,7 +18,8 @@ ALLOWED_STYLES = [
     'electric_blue', 'matrix_terminal', 'impact_white', 'comic_pop',
     'tiktok_trending', 'podcast_spotlight', 'emerald_focus', 'midnight_pink',
     'vlog_casual', 'cinematic_gold', 'kinetic_fast', 'crimson_shadow',
-    'ice_hologram', 'tech_mono', 'peak_motivation', 'subtle_lower_third'
+    'ice_hologram', 'tech_mono', 'peak_motivation', 'subtle_lower_third',
+    'typewriter', 'yt_shorts', 'pastel_pop'
 ]
 
 

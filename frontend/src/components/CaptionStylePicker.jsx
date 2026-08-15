@@ -394,6 +394,48 @@ export const ALL_CAPTION_STYLES = [
         </div>
       </div>
     )
+  },
+  {
+    id: 'typewriter',
+    name: 'Typewriter Vintage Mono',
+    tag: 'TYPEWRITER',
+    desc: 'Classic vintage mechanical typewriter with amber cursor glow',
+    color: '#FCD34D',
+    preview: (
+      <div className="bg-black/90 h-20 rounded-2xl flex items-center justify-center p-3 border border-white/10 font-mono">
+        <span className="text-xs text-gray-200">
+          Chapter 1: The <span className="text-yellow-300 font-bold bg-yellow-950/80 px-1 py-0.5 rounded border border-yellow-400/50 underline">Beginning_</span>
+        </span>
+      </div>
+    )
+  },
+  {
+    id: 'yt_shorts',
+    name: 'YouTube Shorts Prime',
+    tag: 'YT SHORTS',
+    desc: 'Iconic YouTube Shorts high-energy red & white bold styling',
+    color: '#FF0000',
+    preview: (
+      <div className="bg-black/90 h-20 rounded-2xl flex items-center justify-center p-3 border border-white/10">
+        <span className="font-black text-xs uppercase text-white">
+          DON'T MISS <span className="text-red-500 font-black px-1.5 py-0.5 bg-white rounded border border-red-600 shadow-[0_0_10px_rgba(255,0,0,0.6)]">THIS PART</span>
+        </span>
+      </div>
+    )
+  },
+  {
+    id: 'pastel_pop',
+    name: 'Bold Pastel Pop',
+    tag: 'CREATOR AESTHETIC',
+    desc: 'Soft lavender & pastel yellow aesthetic for lifestyle creators',
+    color: '#DDD6FE',
+    preview: (
+      <div className="bg-black/90 h-20 rounded-2xl flex items-center justify-center p-3 border border-white/10">
+        <span className="font-bold text-xs text-purple-200">
+          My favorite <span className="text-yellow-300 font-black px-1.5 py-0.5 bg-purple-900/60 rounded border border-purple-400/50">ROUTINE</span> ever
+        </span>
+      </div>
+    )
   }
 ];
 

@@ -68,6 +68,12 @@ export default function ClipEditor() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setProject(res.data);
+      if (res.data.language_preference) {
+        setLanguagePref(res.data.language_preference);
+      }
+      if (res.data.target_shorts_count) {
+        setShortsCount(res.data.target_shorts_count);
+      }
       setClips(res.data.clips || []);
       if (res.data.clips && res.data.clips.length > 0) {
         setSelectedClip(res.data.clips[0]);
@@ -327,11 +333,11 @@ export default function ClipEditor() {
               Select a <span className="font-serif-italic text-[#b8f032]">Design</span>
             </h1>
             <p className="text-gray-400 text-xs sm:text-sm max-w-xl mx-auto">
-              Choose from 28 high-retention viral auto-caption designs. Click any template to preview its styling before generating.
+              Choose from 31 high-retention viral auto-caption designs. Click any template to preview its styling before generating.
             </p>
           </div>
 
-          {/* 16 Interactive Caption Cards */}
+          {/* 31 Interactive Caption Cards */}
           <CaptionStylePicker selected={selectedStyle} onSelect={setSelectedStyle} />
 
           {/* AI Pipeline Customization Settings */}
@@ -369,9 +375,10 @@ export default function ClipEditor() {
                   onChange={(e) => setShortsCount(Number(e.target.value))}
                   className="w-full px-3 py-2 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#b8f032] cursor-pointer"
                 >
-                  <option value={1}>1 Viral Short</option>
-                  <option value={4}>4 Viral Shorts (Recommended)</option>
-                  <option value={10}>10 Viral Shorts</option>
+                  <option value={1}>1 Short</option>
+                  <option value={3}>3 Shorts</option>
+                  <option value={4}>4 Shorts (Recommended)</option>
+                  <option value={10}>10 Shorts</option>
                   <option value={0}>Max Possible Highlights</option>
                 </select>
               </div>
@@ -402,7 +409,7 @@ export default function ClipEditor() {
             >
               <div className="btn-ai-glow-inner px-12 py-4 text-xs sm:text-sm font-black uppercase tracking-wider flex items-center gap-3">
                 <Zap className="w-5 h-5 fill-white text-white" />
-                <span>Generate {shortsCount || 4} Shorts with {selectedStyle.replace('_', ' ').toUpperCase()} (1 Credit)</span>
+                <span>Generate Shorts ({shortsCount || 4}) • {selectedStyle.replace(/_/g, ' ').toUpperCase()} (1 Credit)</span>
                 <ChevronRight className="w-4 h-4 stroke-[3]" />
               </div>
             </button>

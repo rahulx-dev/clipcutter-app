@@ -222,6 +222,24 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
         active_format = "{\\c&H00FFFFFF&\\fscx108\\fscy108}"
         inactive_format = "{\\c&H00D0D0D0&}"
         uppercase = False
+    elif style == 'typewriter':
+        # 29. Typewriter Vintage Mono
+        header += "Style: Default,Courier New,68,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,390,1\n"
+        active_format = "{\\c&H00FFFF&\\fscx112\\fscy112}"
+        inactive_format = "{\\c&H00E0E0E0&}"
+        uppercase = False
+    elif style == 'yt_shorts':
+        # 30. YouTube Shorts Prime (Bold Red & White)
+        header += "Style: Default,Impact,76,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,20,20,380,1\n"
+        active_format = "{\\c&H0000FF&\\fscx118\\fscy118}"
+        inactive_format = "{\\c&H00FFFFFF&}"
+        uppercase = True
+    elif style == 'pastel_pop':
+        # 31. Bold Pastel Pop (Lavender & Yellow)
+        header += "Style: Default,Arial,70,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,380,1\n"
+        active_format = "{\\c&HFFB6C1&\\fscx115\\fscy115}"
+        inactive_format = "{\\c&H00FFF0F5&}"
+        uppercase = False
     else:
         header += "Style: Default,Impact,75,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,20,20,380,1\n"
         active_format = "{\\c&H00FFFF&\\fscx110\\fscy110}"

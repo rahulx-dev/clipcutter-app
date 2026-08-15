@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Link as LinkIcon, X, FileVideo, Zap, Globe, Sliders, 
-  CheckCircle, Clock, Film, Volume2, Sparkles, ArrowRight 
+  CheckCircle, Clock, Film, Volume2, Sparkles, ArrowRight, AlertTriangle 
 } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../App';
+
+const YOUTUBE_REGEX = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com|youtu\.be)\/.+$/i;
 
 export default function VideoUploader({ isOpen, onClose, onSuccess }) {
   const [tab, setTab] = useState('youtube');
@@ -16,6 +18,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
   const [shortsCount, setShortsCount] = useState(4);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const { token, refreshUser } = useAuth();
 
@@ -23,6 +26,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
 
   const handleDrop = (e) => {
     e.preventDefault();
+    setErrorMsg('');
     const dropped = e.dataTransfer.files[0];
     if (dropped && (dropped.type.includes('video') || dropped.name.endsWith('.mp4') || dropped.name.endsWith('.mov') || dropped.name.endsWith('.webm'))) {
       setFile(dropped);
@@ -31,6 +35,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
   };
 
   const handleFileSelect = (e) => {
+    setErrorMsg('');
     const selected = e.target.files[0];
     if (selected) {
       setFile(selected);
@@ -40,18 +45,42 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title || !title.trim()) return alert("Please provide a valid project name");
-    
+    setErrorMsg('');
+
+    // 1. Validate Project Name
+    const cleanTitle = title ? title.trim() : '';
+    if (!cleanTitle || cleanTitle.length < 2) {
+      setErrorMsg("Please enter a valid Project Name (at least 2 characters).");
+      return;
+    }
+
+    // 2. Validate YouTube URL or File
+    if (tab === 'youtube') {
+      const cleanUrl = url ? url.trim() : '';
+      if (!cleanUrl) {
+        setErrorMsg("Please enter a YouTube video URL.");
+        return;
+      }
+      if (!YOUTUBE_REGEX.test(cleanUrl)) {
+        setErrorMsg("Please enter a valid YouTube video URL (e.g. https://www.youtube.com/watch?v=... or https://youtu.be/...).");
+        return;
+      }
+    } else {
+      if (!file) {
+        setErrorMsg("Please select a video file (.mp4, .mov, or .webm).");
+        return;
+      }
+    }
+
     setUploading(true);
     setProgress(0);
 
     try {
       let res;
       if (tab === 'upload') {
-        if (!file) return alert("Please select a video file");
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('title', title.trim());
+        formData.append('title', cleanTitle);
         
         res = await axios.post('/api/projects/upload', formData, {
           headers: { 
@@ -64,9 +93,8 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
           }
         });
       } else {
-        if (!url || !url.trim()) return alert("Please provide a valid YouTube video URL");
         res = await axios.post('/api/projects/youtube', { 
-          title: title.trim(), 
+          title: cleanTitle, 
           url: url.trim() 
         }, {
           headers: { 'Authorization': `Bearer ${token}` }
@@ -88,11 +116,11 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
     } catch (error) {
       console.error("Video submission error:", error);
       if (error.response?.status === 401) {
-        alert("Your session expired. Please log in again.");
+        setErrorMsg("Your session expired. Please log in again.");
       } else if (error.response?.status === 403) {
-        alert("No credits remaining on your account. Please upgrade your plan in Pricing.");
+        setErrorMsg("No credits remaining on your account. Please upgrade your plan in Pricing.");
       } else {
-        alert(error.response?.data?.detail || error.response?.data?.message || error.message || "Could not process video submission. Please check your network or URL.");
+        setErrorMsg(error.response?.data?.detail || error.response?.data?.message || error.message || "Could not process video submission. Please check your network or URL.");
       }
     } finally {
       setUploading(false);
@@ -125,8 +153,8 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
                 <Zap className="w-4 h-4 text-[#b8f032] fill-[#b8f032]" />
               </div>
               <div>
-                <h2 className="text-base font-extrabold text-white tracking-tight">Create Viral Short</h2>
-                <p className="text-[10px] text-gray-400">Step 1: Enter link, language & target shorts</p>
+                <h2 className="text-base font-extrabold text-white tracking-tight">Step 1: Project Setup</h2>
+                <p className="text-[10px] text-gray-400">Configure video source, language & output count</p>
               </div>
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors cursor-pointer p-1">
@@ -135,11 +163,23 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
           </div>
 
           <div className="p-5 sm:p-6 space-y-4">
+            {/* Error Notification */}
+            {errorMsg && (
+              <motion.div 
+                initial={{ opacity: 0, y: -5 }} 
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3 bg-red-500/15 border border-red-500/30 rounded-2xl flex items-start gap-2.5 text-xs text-red-200"
+              >
+                <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                <span>{errorMsg}</span>
+              </motion.div>
+            )}
+
             {/* Tab switchers */}
             <div className="flex space-x-2 bg-white/[0.04] p-1 rounded-full border border-white/10">
               <button 
                 type="button"
-                onClick={() => setTab('youtube')}
+                onClick={() => { setTab('youtube'); setErrorMsg(''); }}
                 className={`flex-1 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   tab === 'youtube' ? 'bg-white text-black font-extrabold shadow' : 'text-gray-400 hover:text-white'
                 }`}
@@ -148,7 +188,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
               </button>
               <button 
                 type="button"
-                onClick={() => setTab('upload')}
+                onClick={() => { setTab('upload'); setErrorMsg(''); }}
                 className={`flex-1 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   tab === 'upload' ? 'bg-white text-black font-extrabold shadow' : 'text-gray-400 hover:text-white'
                 }`}
@@ -157,7 +197,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
               </button>
             </div>
 
-            {/* Input 1: Project Name */}
+            {/* 1. Project Name */}
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-300 mb-1.5">
                 1. Project Name <span className="text-[#b8f032]">*</span>
@@ -165,23 +205,23 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
               <input 
                 type="text" 
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => { setTitle(e.target.value); setErrorMsg(''); }}
                 className="w-full px-4 py-2.5 bg-black/60 border border-white/15 rounded-2xl focus:outline-none focus:border-[#b8f032] text-white text-sm"
                 placeholder="e.g. Alex Hormozi Million Dollar Advice"
                 disabled={uploading}
               />
             </div>
 
-            {/* Input 2: YouTube URL or File Upload */}
+            {/* 2. YouTube Link or File Upload */}
             {tab === 'youtube' ? (
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-300 mb-1.5">
-                  2. YouTube Video Link <span className="text-[#b8f032]">*</span>
+                  2. YouTube Link <span className="text-[#b8f032]">*</span>
                 </label>
                 <input 
                   type="url" 
                   value={url}
-                  onChange={(e) => setUrl(e.target.value)}
+                  onChange={(e) => { setUrl(e.target.value); setErrorMsg(''); }}
                   className="w-full px-4 py-2.5 bg-black/60 border border-white/15 rounded-2xl focus:outline-none focus:border-[#b8f032] text-white text-sm"
                   placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
                   disabled={uploading}
@@ -223,12 +263,12 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
               </div>
             )}
 
-            {/* Row with Options 3 & 4 */}
+            {/* 3. Language & 4. Number of Shorts */}
             <div className="grid grid-cols-2 gap-3 pt-1">
-              {/* Option 3: Select Language */}
+              {/* 3. Language */}
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-300 mb-1.5 flex items-center gap-1">
-                  <Globe className="w-3 h-3 text-[#b8f032]" /> 3. Language AI
+                  <Globe className="w-3 h-3 text-[#b8f032]" /> 3. Language
                 </label>
                 <select 
                   value={languagePref}
@@ -243,10 +283,10 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
                 </select>
               </div>
 
-              {/* Option 4: How Many Shorts */}
+              {/* 4. Number of Shorts */}
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-300 mb-1.5 flex items-center gap-1">
-                  <Film className="w-3 h-3 text-[#b8f032]" /> 4. How Many Shorts
+                  <Film className="w-3 h-3 text-[#b8f032]" /> 4. Number of Shorts
                 </label>
                 <select 
                   value={shortsCount}
@@ -254,10 +294,10 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
                   className="w-full px-3 py-2 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#b8f032] cursor-pointer"
                   disabled={uploading}
                 >
-                  <option value={1}>1 Viral Short</option>
-                  <option value={3}>3 Viral Shorts</option>
-                  <option value={4}>4 Viral Shorts (Recommended)</option>
-                  <option value={10}>10 Viral Shorts</option>
+                  <option value={1}>1 Short</option>
+                  <option value={3}>3 Shorts</option>
+                  <option value={4}>4 Shorts (Recommended)</option>
+                  <option value={10}>10 Shorts</option>
                   <option value={0}>Max Possible Shorts</option>
                 </select>
               </div>
@@ -279,11 +319,11 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
               </div>
             )}
 
-            {/* Step 1 Button: PROCEED */}
+            {/* 5. Proceed Button */}
             <div className="pt-2">
               <button
                 onClick={handleSubmit}
-                disabled={uploading || (tab === 'upload' ? !file : !url) || !title}
+                disabled={uploading}
                 className="w-full btn-ai-glow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="btn-ai-glow-inner py-3.5 text-xs font-black uppercase tracking-wider w-full flex items-center justify-center gap-2">
@@ -291,7 +331,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
                     <span>Ingesting Video...</span>
                   ) : (
                     <>
-                      <span>Proceed to Choose Design</span>
+                      <span>Proceed to Select Design</span>
                       <ArrowRight className="w-4 h-4 stroke-[3]" />
                     </>
                   )}
