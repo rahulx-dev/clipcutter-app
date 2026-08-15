@@ -1,8 +1,30 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Link as LinkIcon, X, FileVideo, Zap, Globe, Sliders, CheckCircle, Clock, Film, Volume2, Sparkles, ArrowRight } from 'lucide-react';
+import { 
+  Upload, Link as LinkIcon, X, FileVideo, Zap, Globe, Sliders, 
+  CheckCircle, Clock, Film, Volume2, Sparkles, ArrowRight, Type, Check 
+} from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../App';
+
+const CAPTION_PRESETS = [
+  { id: 'hormozi', name: 'Hormozi Yellow', tag: 'VIRAL', previewColor: '#FACC15' },
+  { id: 'neon_cyber', name: 'Neon Cyber', tag: 'TRENDING', previewColor: '#22D3EE' },
+  { id: 'beast_red', name: 'Beast Red', tag: 'HIGH ENERGY', previewColor: '#EF4444' },
+  { id: 'golden_luxury', name: 'Golden Luxury', tag: 'FINANCE', previewColor: '#F59E0B' },
+  { id: 'karaoke_green', name: 'Karaoke Glow', tag: 'PODCAST', previewColor: '#84CC16' },
+  { id: 'ali_abdaal', name: 'Ali Abdaal Clean', tag: 'PRODUCTIVE', previewColor: '#38BDF8' },
+  { id: 'iman_gadzhi', name: 'Iman Noir', tag: 'LUXURY', previewColor: '#FDE68A' },
+  { id: 'sunset_orange', name: 'Sunset Flame', tag: 'POPULAR', previewColor: '#FB923C' },
+  { id: 'dynamic', name: 'Dynamic Pop', tag: 'BOUNCE', previewColor: '#b8f032' },
+  { id: 'retro_arcade', name: 'Retro 8-Bit', tag: 'GAMING', previewColor: '#4ADE80' },
+  { id: 'neon_violet', name: 'Neon Violet', tag: 'CYBER', previewColor: '#E879F9' },
+  { id: 'electric_blue', name: 'Electric Blue', tag: 'FAST', previewColor: '#60A5FA' },
+  { id: 'matrix_terminal', name: 'Matrix Code', tag: 'TECH', previewColor: '#22C55E' },
+  { id: 'impact_white', name: 'Impact White', tag: 'CLEAN', previewColor: '#FFFFFF' },
+  { id: 'comic_pop', name: 'Comic Pop', tag: 'MEME', previewColor: '#F87171' },
+  { id: 'minimal', name: 'Clean Minimal', tag: 'SIMPLE', previewColor: '#E2E8F0' },
+];
 
 export default function VideoUploader({ isOpen, onClose, onSuccess }) {
   const [tab, setTab] = useState('upload');
@@ -13,6 +35,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
   const [progress, setProgress] = useState(0);
 
   // v3.0 Configurations
+  const [captionStyle, setCaptionStyle] = useState('hormozi');
   const [shortsCount, setShortsCount] = useState(4);
   const [languagePref, setLanguagePref] = useState('auto');
   const [editingIntensity, setEditingIntensity] = useState('BALANCED');
@@ -77,11 +100,11 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
       // Refresh credits immediately so Navbar updates to 2
       if (refreshUser) refreshUser();
 
-      // If One Click Viral Mode is enabled, automatically trigger the pipeline
+      // If One Click Viral Mode is enabled, automatically trigger the pipeline with chosen caption style
       if (oneClickViral && createdProject?.id) {
         try {
           await axios.post(`/api/process/${createdProject.id}`, {
-            caption_style: 'hormozi',
+            caption_style: captionStyle,
             shorts_count: shortsCount,
             language_pref: languagePref,
             editing_intensity: editingIntensity
@@ -117,7 +140,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="fixed inset-0 bg-black/80 backdrop-blur-md"
+          className="fixed inset-0 bg-black/85 backdrop-blur-md"
         />
 
         {/* Modal Window */}
@@ -125,30 +148,27 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="glass-authkit rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl relative z-10"
+          className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto glass-card-verdant rounded-3xl border border-white/20 shadow-[0_25px_70px_rgba(0,0,0,0.9)] z-10 bg-[#070c14]/95 text-white"
         >
-          {/* Corner Precision Marks */}
-          <div className="corner-dot corner-dot-tl"></div>
-          <div className="corner-dot corner-dot-tr"></div>
-          <div className="corner-dot corner-dot-bl"></div>
-          <div className="corner-dot corner-dot-br"></div>
-
-          {/* Modal Header */}
-          <div className="p-5 border-b border-white/[0.08] flex justify-between items-center">
+          {/* Header */}
+          <div className="flex items-center justify-between p-5 border-b border-white/10 sticky top-0 bg-[#070c14]/95 backdrop-blur-md z-10">
             <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-full bg-white/[0.08] flex items-center justify-center border border-white/15">
-                <Zap className="w-4 h-4 text-white fill-white" />
+              <div className="w-8 h-8 rounded-full bg-[#b8f032]/20 border border-[#b8f032]/40 flex items-center justify-center">
+                <Zap className="w-4 h-4 text-[#b8f032] fill-[#b8f032]" />
               </div>
-              <h2 className="text-base font-bold text-white tracking-tight">Create Viral Short</h2>
+              <div>
+                <h2 className="text-base font-extrabold text-white tracking-tight">Create Viral Short</h2>
+                <p className="text-[10px] text-gray-400">Select source, captions and AI pipeline</p>
+              </div>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors cursor-pointer">
+            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors cursor-pointer p-1">
               <X className="w-5 h-5" />
             </button>
           </div>
 
           <div className="p-5 sm:p-6 space-y-5">
             {/* Tab switchers */}
-            <div className="flex space-x-2 bg-white/[0.03] p-1 rounded-full border border-white/5">
+            <div className="flex space-x-2 bg-white/[0.04] p-1 rounded-full border border-white/10">
               <button 
                 type="button"
                 onClick={() => setTab('upload')}
@@ -176,7 +196,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
                 type="text" 
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-4 py-2.5 bg-black/50 border border-white/10 rounded-2xl focus:outline-none focus:border-white/30 text-white text-sm"
+                className="w-full px-4 py-2.5 bg-black/60 border border-white/15 rounded-2xl focus:outline-none focus:border-[#b8f032] text-white text-sm"
                 placeholder="e.g. Alex Hormozi Podcast Highlights"
                 disabled={uploading}
               />
@@ -189,20 +209,20 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
                 onDrop={handleDrop}
                 className={`border-2 border-dashed rounded-3xl p-6 text-center transition-all ${
                   file 
-                    ? 'border-white bg-white/[0.06]' 
-                    : 'border-white/15 hover:border-white/30 hover:bg-white/[0.02]'
+                    ? 'border-[#b8f032] bg-[#b8f032]/[0.06]' 
+                    : 'border-white/15 hover:border-[#b8f032]/50 hover:bg-white/[0.02]'
                 }`}
               >
                 <input type="file" id="file-upload" className="hidden" accept=".mp4,.mov,.webm" onChange={handleFileSelect} disabled={uploading} />
                 <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
                   {file ? (
                     <>
-                      <FileVideo className="w-9 h-9 text-white mb-2" />
+                      <FileVideo className="w-9 h-9 text-[#b8f032] mb-2" />
                       <p className="text-white font-bold text-sm truncate max-w-xs">{file.name}</p>
                       <div className="flex items-center gap-3 text-xs text-gray-400 mt-1.5">
                         <span>{(file.size / (1024 * 1024)).toFixed(2)} MB</span>
                         <span>•</span>
-                        <span className="text-white font-semibold flex items-center gap-1">
+                        <span className="text-[#b8f032] font-semibold flex items-center gap-1">
                           <CheckCircle className="w-3 h-3" /> Ready
                         </span>
                       </div>
@@ -226,16 +246,54 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
                   type="url" 
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-black/50 border border-white/10 rounded-2xl focus:outline-none focus:border-white/30 text-white text-sm"
+                  className="w-full px-4 py-2.5 bg-black/60 border border-white/15 rounded-2xl focus:outline-none focus:border-[#b8f032] text-white text-sm"
                   placeholder="https://www.youtube.com/watch?v=..."
                   disabled={uploading}
                 />
               </div>
             )}
 
-            {/* AI Configurations */}
-            <div className="p-4 bg-white/[0.02] border border-white/[0.06] rounded-2xl space-y-3.5">
-              <div className="flex items-center justify-between text-xs font-bold text-gray-300 border-b border-white/[0.06] pb-2">
+            {/* ── 16 Viral Caption Presets Selection Grid ── */}
+            <div className="p-4 bg-white/[0.02] border border-white/[0.08] rounded-2xl space-y-3">
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+                <span className="flex items-center gap-1.5 text-xs font-extrabold text-[#b8f032] uppercase tracking-wider">
+                  <Type className="w-3.5 h-3.5" /> Choose Caption Style ({CAPTION_PRESETS.length} Presets)
+                </span>
+                <span className="text-[10px] text-gray-400 font-medium">Selected: <strong className="text-white capitalize">{captionStyle.replace('_', ' ')}</strong></span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
+                {CAPTION_PRESETS.map((preset) => {
+                  const isSelected = captionStyle === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setCaptionStyle(preset.id)}
+                      className={`p-2 rounded-xl text-left transition-all relative border cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? 'bg-[#b8f032]/15 border-[#b8f032] shadow-[0_0_12px_rgba(184,240,50,0.3)]'
+                          : 'bg-white/[0.03] border-white/10 hover:border-white/30'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full mb-1">
+                        <span 
+                          className="w-2.5 h-2.5 rounded-full inline-block" 
+                          style={{ backgroundColor: preset.previewColor }}
+                        />
+                        {isSelected && <Check className="w-3 h-3 text-[#b8f032] stroke-[3]" />}
+                      </div>
+                      <p className="text-[11px] font-bold text-white truncate">{preset.name}</p>
+                      <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-tight">{preset.tag}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* AI Configurations (Language & Shorts count) */}
+            <div className="p-4 bg-white/[0.02] border border-white/[0.08] rounded-2xl space-y-3.5">
+              <div className="flex items-center justify-between text-xs font-bold text-gray-300 border-b border-white/[0.08] pb-2">
                 <span className="flex items-center gap-1.5 text-white">
                   <Sliders className="w-3.5 h-3.5" /> AI Pipeline Settings
                 </span>
@@ -251,7 +309,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
                   <select 
                     value={languagePref}
                     onChange={(e) => setLanguagePref(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-black/60 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-white/30 cursor-pointer"
+                    className="w-full px-2.5 py-1.5 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#b8f032] cursor-pointer"
                   >
                     <option value="auto">Auto Detect</option>
                     <option value="hi">Hindi</option>
@@ -268,7 +326,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
                   <select 
                     value={shortsCount}
                     onChange={(e) => setShortsCount(Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 bg-black/60 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-white/30 cursor-pointer"
+                    className="w-full px-2.5 py-1.5 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#b8f032] cursor-pointer"
                   >
                     <option value={1}>1 Viral Short</option>
                     <option value={4}>4 Viral Shorts</option>
@@ -281,17 +339,17 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
               {/* One Click Viral Mode Toggle */}
               <div className="flex items-center justify-between pt-1">
                 <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-white fill-white" />
+                  <Zap className="w-4 h-4 text-[#b8f032] fill-[#b8f032]" />
                   <div>
                     <p className="text-xs font-bold text-white flex items-center gap-1">One Click Viral Mode</p>
-                    <p className="text-[10px] text-gray-400">Auto transcribe, reframe, punch zoom and score in 1 click</p>
+                    <p className="text-[10px] text-gray-400">Auto transcribe, crop 9:16, burn subtitles and rank highlights</p>
                   </div>
                 </div>
                 <input 
                   type="checkbox" 
                   checked={oneClickViral} 
                   onChange={(e) => setOneClickViral(e.target.checked)}
-                  className="w-4 h-4 accent-white cursor-pointer rounded" 
+                  className="w-4 h-4 accent-[#b8f032] cursor-pointer rounded" 
                 />
               </div>
             </div>
@@ -305,7 +363,7 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
                 </div>
                 <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
                   <div 
-                    className="bg-white h-2 rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(255,255,255,0.8)]" 
+                    className="bg-[#b8f032] h-2 rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(184,240,50,0.8)]" 
                     style={{ width: `${progress}%` }}
                   ></div>
                 </div>
@@ -320,11 +378,11 @@ export default function VideoUploader({ isOpen, onClose, onSuccess }) {
             >
               <div className="btn-ai-glow-inner py-3.5 text-xs font-extrabold uppercase tracking-wider w-full">
                 {uploading ? (
-                  <span>Ingesting Video...</span>
+                  <span>Ingesting Video & Applying {captionStyle.replace('_', ' ').toUpperCase()}...</span>
                 ) : (
                   <>
                     <Zap className="w-4 h-4 fill-white text-white" />
-                    <span>{oneClickViral ? 'Generate Viral Shorts Now (1 Credit)' : 'Create Project (1 Credit)'}</span>
+                    <span>Generate Shorts with {captionStyle.replace('_', ' ').toUpperCase()} Captions</span>
                     <ArrowRight className="w-4 h-4 stroke-[3]" />
                   </>
                 )}
