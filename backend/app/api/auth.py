@@ -12,9 +12,9 @@ import hashlib
 from app.core.config import settings
 from app.core.security import hash_password, verify_password, create_access_token, get_current_user
 from app.db.database import get_db
-from app.db.models import User, OTPRecord, EmailVerificationToken, PlanType, AuthProvider
+from app.db.models import User, OTPRecord, EmailOTPRecord, EmailVerificationToken, PlanType, AuthProvider
 from app.services.sms_service import send_sms_otp, mask_phone_number
-from app.services.email_service import send_verification_email
+from app.services.email_service import send_brevo_email_otp, send_verification_email
 from app.services.google_auth_service import verify_google_id_token
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -339,7 +339,16 @@ async def google_oauth_login(
     }
 
 
-# ── 3. Standard Email / Password Routes ──────────────────────────────
+# ── 3. Standard Email / Password Routes with Brevo Email OTP ────────
+class EmailOTPRequest(BaseModel):
+    email: str
+
+
+class VerifyEmailOTPRequest(BaseModel):
+    email: str
+    otp_code: str
+
+
 class VerifyEmailRequest(BaseModel):
     token: str
 
@@ -351,6 +360,7 @@ class ResendVerificationRequest(BaseModel):
 @router.post("/register")
 async def register(
     user_data: UserRegisterRequest, 
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     clean_email = validate_genuine_email(user_data.email)
@@ -365,7 +375,7 @@ async def register(
         if existing_user.email_verified:
             raise HTTPException(status_code=400, detail="This email is already registered. Please sign in.")
         else:
-            # Update password and resend verification
+            # Update password and resend OTP
             existing_user.password_hash = hash_password(user_data.password)
             if user_data.name:
                 existing_user.name = user_data.name
@@ -384,40 +394,239 @@ async def register(
         db.add(user)
         await db.flush()
 
-    # Invalidate previous unused tokens for this user
+    now_utc = datetime.now(timezone.utc)
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Rate limiting: max 3 requests in 10 minutes
+    rate_limit_window = now_utc - timedelta(minutes=settings.EMAIL_OTP_RATE_LIMIT_WINDOW_MINUTES)
+    count_res = await db.execute(
+        select(func.count(EmailOTPRecord.id)).where(and_(
+            EmailOTPRecord.email == clean_email,
+            EmailOTPRecord.created_at >= rate_limit_window
+        ))
+    )
+    req_count = count_res.scalar() or 0
+    if req_count >= settings.EMAIL_OTP_RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many OTP requests. Please try again after {settings.EMAIL_OTP_RATE_LIMIT_WINDOW_MINUTES} minutes."
+        )
+
+    # Invalidate previous unused OTP records for this email
     await db.execute(
-        update(EmailVerificationToken)
+        update(EmailOTPRecord)
         .where(and_(
-            EmailVerificationToken.user_id == user.id,
-            EmailVerificationToken.is_used == False
+            EmailOTPRecord.email == clean_email,
+            EmailOTPRecord.is_used == False
         ))
         .values(is_used=True)
     )
 
-    # Generate single-use cryptographically secure token
-    raw_token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.EMAIL_VERIFICATION_EXPIRY_MINUTES)
+    # Generate secure 6-digit OTP (100000 - 999999)
+    otp = f"{secrets.randbelow(900000) + 100000}"
+    otp_hash = hashlib.sha256(otp.encode()).hexdigest()
+    expires_at = now_utc + timedelta(minutes=settings.EMAIL_OTP_EXPIRY_MINUTES)
 
-    token_record = EmailVerificationToken(
-        user_id=user.id,
+    otp_record = EmailOTPRecord(
         email=clean_email,
-        token_hash=token_hash,
+        otp_hash=otp_hash,
+        attempts=0,
         expires_at=expires_at,
-        is_used=False
+        last_sent_at=now_utc,
+        is_used=False,
+        ip_address=client_ip
     )
-    db.add(token_record)
+    db.add(otp_record)
     await db.commit()
 
-    # Dispatch verification email
-    verification_url = f"{settings.FRONTEND_URL}/verify-email?token={raw_token}"
-    send_verification_email(clean_email, user.name, verification_url)
-    
+    # Dispatch real 6-digit OTP via Brevo Email API
+    await send_brevo_email_otp(clean_email, user.name, otp)
+
     return {
         "success": True,
         "email_verified": False,
         "email": clean_email,
-        "message": f"Verification email sent to {clean_email}. Please check your inbox to activate your account."
+        "cooldown_seconds": settings.EMAIL_OTP_COOLDOWN_SECONDS,
+        "message": f"6-digit verification code sent to {clean_email}."
+    }
+
+
+@router.post("/send-email-otp")
+async def send_email_otp(
+    req: EmailOTPRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    clean_email = validate_genuine_email(req.email)
+    now_utc = datetime.now(timezone.utc)
+    client_ip = request.client.host if request.client else "unknown"
+
+    result = await db.execute(select(User).where(User.email == clean_email))
+    user = result.scalar_one_or_none()
+
+    if user and user.email_verified:
+        return {
+            "success": True,
+            "already_verified": True,
+            "message": "Your email is already verified. You can sign in directly."
+        }
+
+    # Check 60-second cooldown from last sent OTP
+    last_res = await db.execute(
+        select(EmailOTPRecord)
+        .where(EmailOTPRecord.email == clean_email)
+        .order_by(EmailOTPRecord.created_at.desc())
+    )
+    last_record = last_res.scalars().first()
+    if last_record and last_record.last_sent_at:
+        sent_at = last_record.last_sent_at
+        if sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+        elapsed = (now_utc - sent_at).total_seconds()
+        if elapsed < settings.EMAIL_OTP_COOLDOWN_SECONDS:
+            remaining = int(settings.EMAIL_OTP_COOLDOWN_SECONDS - elapsed)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Please wait {remaining} seconds before requesting a new verification code."
+            )
+
+    # Rate limiting: max 3 requests in 10 minutes
+    rate_limit_window = now_utc - timedelta(minutes=settings.EMAIL_OTP_RATE_LIMIT_WINDOW_MINUTES)
+    count_res = await db.execute(
+        select(func.count(EmailOTPRecord.id)).where(and_(
+            EmailOTPRecord.email == clean_email,
+            EmailOTPRecord.created_at >= rate_limit_window
+        ))
+    )
+    req_count = count_res.scalar() or 0
+    if req_count >= settings.EMAIL_OTP_RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many OTP requests. Please wait {settings.EMAIL_OTP_RATE_LIMIT_WINDOW_MINUTES} minutes."
+        )
+
+    # Invalidate previous unused OTP records
+    await db.execute(
+        update(EmailOTPRecord)
+        .where(and_(
+            EmailOTPRecord.email == clean_email,
+            EmailOTPRecord.is_used == False
+        ))
+        .values(is_used=True)
+    )
+
+    # Generate secure 6-digit OTP
+    otp = f"{secrets.randbelow(900000) + 100000}"
+    otp_hash = hashlib.sha256(otp.encode()).hexdigest()
+    expires_at = now_utc + timedelta(minutes=settings.EMAIL_OTP_EXPIRY_MINUTES)
+
+    otp_record = EmailOTPRecord(
+        email=clean_email,
+        otp_hash=otp_hash,
+        attempts=0,
+        expires_at=expires_at,
+        last_sent_at=now_utc,
+        is_used=False,
+        ip_address=client_ip
+    )
+    db.add(otp_record)
+    await db.commit()
+
+    user_name = user.name if user else "Creator"
+    await send_brevo_email_otp(clean_email, user_name, otp)
+
+    return {
+        "success": True,
+        "email": clean_email,
+        "cooldown_seconds": settings.EMAIL_OTP_COOLDOWN_SECONDS,
+        "message": f"Verification code sent to {clean_email}."
+    }
+
+
+@router.post("/verify-email-otp")
+async def verify_email_otp(
+    req: VerifyEmailOTPRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    clean_email = validate_genuine_email(req.email)
+    otp_code = req.otp_code.strip()
+
+    if not re.match(r"^\d{6}$", otp_code):
+        raise HTTPException(status_code=400, detail="Please enter a valid 6-digit verification code.")
+
+    now_utc = datetime.now(timezone.utc)
+
+    # Find latest active OTP record for this email
+    result = await db.execute(
+        select(EmailOTPRecord)
+        .where(and_(
+            EmailOTPRecord.email == clean_email,
+            EmailOTPRecord.is_used == False
+        ))
+        .order_by(EmailOTPRecord.created_at.desc())
+    )
+    otp_record = result.scalars().first()
+
+    if not otp_record:
+        raise HTTPException(
+            status_code=400,
+            detail="No active verification code found. Please request a new code."
+        )
+
+    # Check maximum 5 verification attempts
+    if otp_record.attempts >= settings.EMAIL_OTP_MAX_ATTEMPTS:
+        otp_record.is_used = True
+        await db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum verification attempts exceeded. Please request a new code."
+        )
+
+    # Check expiration (5 minutes)
+    exp = otp_record.expires_at
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+
+    if exp < now_utc:
+        otp_record.is_used = True
+        await db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="Verification code has expired. Please request a new code."
+        )
+
+    # Hash incoming code and compare
+    incoming_hash = hashlib.sha256(otp_code.encode()).hexdigest()
+    if otp_record.otp_hash != incoming_hash:
+        otp_record.attempts += 1
+        await db.commit()
+        remaining = max(0, settings.EMAIL_OTP_MAX_ATTEMPTS - otp_record.attempts)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid verification code. {remaining} attempts remaining."
+        )
+
+    # Invalidate OTP on success
+    otp_record.is_used = True
+
+    # Mark user as verified
+    user_res = await db.execute(select(User).where(User.email == clean_email))
+    user = user_res.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User account not found.")
+
+    user.email_verified = True
+    await db.commit()
+    await db.refresh(user)
+
+    # Generate JWT access token
+    access_token = create_access_token(data={"sub": str(user.id)})
+    return {
+        "success": True,
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user.to_dict(),
+        "message": "Email verified successfully! Welcome to Clip_Cut."
     }
 
 
@@ -442,7 +651,7 @@ async def login(
     if not user.email_verified and user.auth_provider == AuthProvider.EMAIL.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email address before logging in. Check your inbox for the activation link."
+            detail="Please verify your email before logging in."
         )
         
     access_token = create_access_token(data={"sub": str(user.id)})
@@ -482,7 +691,7 @@ async def verify_email(
     if not token_record:
         raise HTTPException(
             status_code=400, 
-            detail="Invalid or already used verification link. Please request a new verification email."
+            detail="Invalid or already used verification link."
         )
 
     exp = token_record.expires_at
@@ -508,7 +717,7 @@ async def verify_email(
     await db.commit()
     await db.refresh(user)
 
-    # Issue access token so user is seamlessly logged in upon verification
+    # Issue access token
     access_token = create_access_token(data={"sub": str(user.id)})
     return {
         "success": True,
@@ -522,74 +731,11 @@ async def verify_email(
 @router.post("/resend-verification")
 async def resend_verification(
     req: ResendVerificationRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    clean_email = validate_genuine_email(req.email)
-    result = await db.execute(select(User).where(User.email == clean_email))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="No account found with this email address.")
-
-    if user.email_verified:
-        return {
-            "success": True,
-            "already_verified": True,
-            "message": "Your email is already verified. You can sign in directly."
-        }
-
-    now_utc = datetime.now(timezone.utc)
-
-    # Check 60-second cooldown from last token
-    last_token_res = await db.execute(
-        select(EmailVerificationToken)
-        .where(EmailVerificationToken.user_id == user.id)
-        .order_by(EmailVerificationToken.created_at.desc())
-    )
-    last_token = last_token_res.scalars().first()
-    if last_token and last_token.created_at:
-        created = last_token.created_at
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
-        elapsed = (now_utc - created).total_seconds()
-        if elapsed < settings.EMAIL_VERIFICATION_COOLDOWN_SECONDS:
-            remaining = int(settings.EMAIL_VERIFICATION_COOLDOWN_SECONDS - elapsed)
-            raise HTTPException(
-                status_code=429,
-                detail=f"Please wait {remaining} seconds before requesting a new verification link."
-            )
-
-    # Invalidate previous tokens
-    await db.execute(
-        update(EmailVerificationToken)
-        .where(and_(
-            EmailVerificationToken.user_id == user.id,
-            EmailVerificationToken.is_used == False
-        ))
-        .values(is_used=True)
-    )
-
-    raw_token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-    expires_at = now_utc + timedelta(minutes=settings.EMAIL_VERIFICATION_EXPIRY_MINUTES)
-
-    token_record = EmailVerificationToken(
-        user_id=user.id,
-        email=clean_email,
-        token_hash=token_hash,
-        expires_at=expires_at,
-        is_used=False
-    )
-    db.add(token_record)
-    await db.commit()
-
-    verification_url = f"{settings.FRONTEND_URL}/verify-email?token={raw_token}"
-    send_verification_email(clean_email, user.name, verification_url)
-
-    return {
-        "success": True,
-        "message": f"A fresh verification link has been sent to {clean_email}."
-    }
+    # Route directly to send-email-otp for seamless experience
+    return await send_email_otp(EmailOTPRequest(email=req.email), request, db)
 
 
 # ── 4. Current User Session ──────────────────────────────────────────

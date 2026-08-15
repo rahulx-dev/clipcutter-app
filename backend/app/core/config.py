@@ -34,15 +34,23 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
-    # ── SMTP Email Verification ──────────────────────────────────────
+    # ── Brevo Transactional Email API (Email OTP) ────────────────────
+    BREVO_API_KEY: str = ""
+    BREVO_SENDER_EMAIL: str = "noreply@clipcutter.ai"
+    BREVO_SENDER_NAME: str = "Clip_Cut"
+    EMAIL_OTP_EXPIRY_MINUTES: int = 5
+    EMAIL_OTP_MAX_ATTEMPTS: int = 5
+    EMAIL_OTP_COOLDOWN_SECONDS: int = 60
+    EMAIL_OTP_RATE_LIMIT_WINDOW_MINUTES: int = 10
+    EMAIL_OTP_RATE_LIMIT_MAX_REQUESTS: int = 3
+
+    # ── SMTP Email Fallback ──────────────────────────────────────────
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
-    SMTP_FROM_NAME: str = "Clip Cutter AI"
-    EMAIL_VERIFICATION_EXPIRY_MINUTES: int = 30
-    EMAIL_VERIFICATION_COOLDOWN_SECONDS: int = 60
+    SMTP_FROM_NAME: str = "Clip_Cut"
 
     # ── SMS Gateway (Phone OTP) ──────────────────────────────────────
     SMS_PROVIDER: str = "fast2sms"  # "fast2sms" | "twilio" | "msg91" | "console"

@@ -127,6 +127,25 @@ class OTPRecord(Base):
     )
 
 
+# ── Email OTP Records (Brevo Verification) ───────────────────────────
+class EmailOTPRecord(Base):
+    __tablename__ = "email_otp_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    otp_hash = Column(String(255), nullable=False)  # SHA-256 hashed OTP
+    attempts = Column(Integer, default=0, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    last_sent_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    is_used = Column(Boolean, default=False, nullable=False)
+    ip_address = Column(String(50), nullable=True)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
 # ── Email Verification Tokens ────────────────────────────────────────
 class EmailVerificationToken(Base):
     __tablename__ = "email_verification_tokens"

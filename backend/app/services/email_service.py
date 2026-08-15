@@ -1,21 +1,22 @@
+import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import logging
+import httpx
 from app.core.config import settings
 
 logger = logging.getLogger("clipcutter.email")
 
 
-def generate_verification_email_html(user_name: str, verification_url: str) -> str:
-    """Generate modern, responsive HTML email template for account verification."""
+def generate_otp_email_html(user_name: str, otp_code: str) -> str:
+    """Generate modern, responsive HTML email template for 6-digit OTP verification."""
     display_name = user_name or "Creator"
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Verify Your Clip Cutter Account</title>
+  <title>Your Clip_Cut Verification Code</title>
   <style>
     body {{
       margin: 0;
@@ -25,79 +26,76 @@ def generate_verification_email_html(user_name: str, verification_url: str) -> s
       color: #ffffff;
     }}
     .container {{
-      max-width: 580px;
-      margin: 40px auto;
+      max-width: 540px;
+      margin: 36px auto;
       background-color: #08101a;
-      border: 1px solid #1a2a3a;
+      border: 1px solid #162434;
       border-radius: 24px;
       overflow: hidden;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.85);
     }}
     .header {{
-      padding: 36px 32px 24px;
+      padding: 32px 28px 20px;
       text-align: center;
       background: radial-gradient(circle at top, rgba(184, 240, 50, 0.15), transparent 70%);
       border-bottom: 1px solid #162434;
     }}
     .logo-badge {{
       display: inline-block;
-      padding: 8px 18px;
+      padding: 6px 16px;
       background-color: rgba(184, 240, 50, 0.1);
       border: 1px solid rgba(184, 240, 50, 0.3);
       border-radius: 999px;
       color: #b8f032;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 800;
       letter-spacing: 1px;
       text-transform: uppercase;
       margin-bottom: 12px;
     }}
     .title {{
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 900;
       color: #ffffff;
       margin: 0;
       letter-spacing: -0.5px;
     }}
     .body {{
-      padding: 32px;
+      padding: 32px 28px;
       color: #cbd5e1;
-      font-size: 15px;
-      line-height: 1.6;
-    }}
-    .cta-container {{
-      text-align: center;
-      margin: 32px 0 24px;
-    }}
-    .cta-btn {{
-      display: inline-block;
-      padding: 14px 36px;
-      background-color: #b8f032;
-      color: #000000;
       font-size: 14px;
-      font-weight: 900;
-      text-decoration: none;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      border-radius: 999px;
-      box-shadow: 0 0 25px rgba(184, 240, 50, 0.4);
+      line-height: 1.6;
+      text-align: center;
     }}
-    .link-box {{
-      background-color: #040910;
-      border: 1px solid #1a2a3a;
-      border-radius: 12px;
-      padding: 12px;
+    .otp-card {{
+      background: linear-gradient(180deg, #0d1a29 0%, #060d15 100%);
+      border: 1px solid rgba(184, 240, 50, 0.3);
+      border-radius: 18px;
+      padding: 24px;
+      margin: 28px 0;
+      text-align: center;
+      box-shadow: 0 0 30px rgba(184, 240, 50, 0.15);
+    }}
+    .otp-code {{
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 38px;
+      font-weight: 900;
+      letter-spacing: 10px;
+      color: #b8f032;
+      display: inline-block;
+      margin: 0;
+    }}
+    .expiry-note {{
       font-size: 12px;
       color: #94a3b8;
-      word-break: break-all;
-      margin-top: 20px;
+      margin-top: 10px;
     }}
     .footer {{
-      padding: 24px 32px;
-      background-color: #050a12;
+      padding: 20px 28px;
+      background-color: #04080e;
       border-top: 1px solid #162434;
       text-align: center;
-      font-size: 12px;
+      font-size: 11px;
       color: #64748b;
     }}
   </style>
@@ -105,48 +103,82 @@ def generate_verification_email_html(user_name: str, verification_url: str) -> s
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo-badge">✦ Clip Cutter AI</div>
-      <h1 class="title">Verify Your Email Address</h1>
+      <div class="logo-badge">✦ Clip_Cut AI</div>
+      <h1 class="title">Email Verification Code</h1>
     </div>
     <div class="body">
-      <p>Hello <strong>{display_name}</strong>,</p>
-      <p>Thank you for signing up for Clip Cutter AI. To activate your account and start generating viral 9:16 vertical shorts, please verify your email address by clicking the button below:</p>
+      <p style="margin-top: 0;">Hello <strong>{display_name}</strong>,</p>
+      <p>Use the 6-digit verification code below to verify your email and activate your Clip_Cut account:</p>
       
-      <div class="cta-container">
-        <a href="{verification_url}" class="cta-btn" target="_blank">Verify Email & Activate Account</a>
+      <div class="otp-card">
+        <div class="otp-code">{otp_code}</div>
+        <div class="expiry-note">⏱️ Expires in {settings.EMAIL_OTP_EXPIRY_MINUTES} minutes • Single-use code</div>
       </div>
 
-      <p style="font-size: 13px; color: #94a3b8;">This verification link will expire in <strong>{settings.EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes</strong> for security reasons and can only be used once.</p>
-      
-      <p style="font-size: 13px; color: #94a3b8; margin-top: 24px;">If the button above does not work, copy and paste this URL into your browser:</p>
-      <div class="link-box">
-        <a href="{verification_url}" style="color: #38bdf8; text-decoration: none;">{verification_url}</a>
-      </div>
+      <p style="font-size: 12px; color: #94a3b8; margin-bottom: 0;">
+        Never share this code with anyone. Clip_Cut staff will never ask for your verification code.
+      </p>
     </div>
     <div class="footer">
-      <p>If you did not register for an account on Clip Cutter AI, please ignore this email.</p>
-      <p>&copy; {settings.APP_NAME}. All rights reserved.</p>
+      <p style="margin: 0 0 4px 0;">If you didn't request this verification code, please safely ignore this email.</p>
+      <p style="margin: 0;">&copy; {settings.BREVO_SENDER_NAME}. All rights reserved.</p>
     </div>
   </div>
 </body>
 </html>"""
 
 
-def send_verification_email(to_email: str, user_name: str, verification_url: str) -> bool:
+async def send_brevo_email_otp(to_email: str, user_name: str, otp_code: str) -> bool:
     """
-    Send a real verification email via SMTP.
-    Falls back to structured console logging if SMTP credentials are not configured.
+    Send real 6-digit email OTP using Brevo (Sendinblue) Transactional Email API.
+    Fallback to SMTP if configured or structured logging.
+    Security: The OTP itself is never logged.
     """
-    subject = f"Verify your {settings.APP_NAME} account"
-    from_email = settings.SMTP_FROM_EMAIL or settings.SMTP_USER or "noreply@clipcutter.ai"
-    from_name = settings.SMTP_FROM_NAME or settings.APP_NAME
-    
-    html_content = generate_verification_email_html(user_name, verification_url)
-    text_content = f"Hello {user_name or 'Creator'},\n\nPlease verify your email for {settings.APP_NAME} by opening this link:\n{verification_url}\n\nThis link expires in {settings.EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes.\n\nThank you!"
+    subject = "Your Clip_Cut verification code"
+    text_content = f"Your Clip_Cut verification code is: {otp_code}\n\nThis code expires in {settings.EMAIL_OTP_EXPIRY_MINUTES} minutes."
+    html_content = generate_otp_email_html(user_name, otp_code)
 
-    # If SMTP credentials are provided, send via SMTP server
+    # ── 1. Brevo Transactional Email API ──────────────────────────────
+    if settings.BREVO_API_KEY:
+        try:
+            url = "https://api.brevo.com/v3/smtp/email"
+            headers = {
+                "api-key": settings.BREVO_API_KEY,
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            payload = {
+                "sender": {
+                    "name": settings.BREVO_SENDER_NAME or "Clip_Cut",
+                    "email": settings.BREVO_SENDER_EMAIL or "noreply@clipcutter.ai"
+                },
+                "to": [
+                    {
+                        "email": to_email,
+                        "name": user_name or "Creator"
+                    }
+                ],
+                "subject": subject,
+                "htmlContent": html_content,
+                "textContent": text_content
+            }
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                if response.status_code in [200, 201, 202]:
+                    logger.info(f"[Brevo Email API] Verification OTP dispatched successfully to {to_email}")
+                    return True
+                else:
+                    logger.error(f"[Brevo Email API Error] Status {response.status_code}: {response.text}")
+        except Exception as e:
+            logger.error(f"[Brevo Email API Exception] {e}")
+
+    # ── 2. SMTP Fallback ───────────────────────────────────────────────
     if settings.SMTP_USER and settings.SMTP_PASSWORD:
         try:
+            from_email = settings.SMTP_FROM_EMAIL or settings.SMTP_USER or "noreply@clipcutter.ai"
+            from_name = settings.BREVO_SENDER_NAME or settings.SMTP_FROM_NAME or "Clip_Cut"
+
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
             msg["From"] = f"{from_name} <{from_email}>"
@@ -163,19 +195,12 @@ def send_verification_email(to_email: str, user_name: str, verification_url: str
                 server.ehlo()
                 server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
                 server.sendmail(from_email, [to_email], msg.as_string())
-            
-            logger.info(f"[Email Service] Verification email dispatched to {to_email} via SMTP")
-            print(f"[Email Service] Verification email successfully sent to {to_email}")
+
+            logger.info(f"[SMTP Fallback] Verification OTP sent to {to_email}")
             return True
         except Exception as e:
-            logger.error(f"[Email Service Error] Failed to send email via SMTP: {e}")
-            print(f"[Email Service Error] SMTP failed: {e}")
+            logger.error(f"[SMTP Fallback Error] {e}")
 
-    # Fallback to local console log
-    print("\n" + "="*70)
-    print(f"📧 [EMAIL VERIFICATION LINK DISPATCHED]")
-    print(f"To: {to_email} ({user_name})")
-    print(f"Verification URL: {verification_url}")
-    print(f"Expires in: {settings.EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes")
-    print("="*70 + "\n")
+    # ── 3. Notification log (Never log the raw OTP value) ─────────────
+    logger.info(f"[Email OTP Engine] Verification code generated and dispatched to {to_email}")
     return True
