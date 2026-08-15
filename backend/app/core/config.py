@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     FACE_SAMPLE_RATE: int = 5  # Analyze every Nth frame
 
     model_config = {
-        "env_file": ".env",
+        "env_file": [".env", "backend/.env", "../.env"],
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

@@ -8,14 +8,18 @@ from datetime import datetime, timezone, timedelta
 import re
 import secrets
 import hashlib
+import time
+import logging
 
 from app.core.config import settings
 from app.core.security import hash_password, verify_password, create_access_token, get_current_user
 from app.db.database import get_db
 from app.db.models import User, OTPRecord, EmailOTPRecord, EmailVerificationToken, PlanType, AuthProvider
 from app.services.sms_service import send_sms_otp, mask_phone_number
-from app.services.email_service import send_brevo_email_otp, send_verification_email
+from app.services.email_service import send_brevo_email_otp
 from app.services.google_auth_service import verify_google_id_token
+
+logger = logging.getLogger("clipcutter.auth")
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -363,7 +367,9 @@ async def register(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+    t_start = time.perf_counter()
     clean_email = validate_genuine_email(user_data.email)
+    logger.info(f"[/api/auth/register -> START] Registration request for {clean_email}")
     
     if len(user_data.password.strip()) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters long")
@@ -437,15 +443,36 @@ async def register(
         ip_address=client_ip
     )
     db.add(otp_record)
+
+    t_db_start = time.perf_counter()
     await db.commit()
+    logger.info(f"[/api/auth/register DB COMMITTED] in {(time.perf_counter() - t_db_start)*1000:.1f}ms for {clean_email}")
 
     # Dispatch real 6-digit OTP via Brevo Email API
+    t_email_start = time.perf_counter()
+    logger.info(f"[/api/auth/register SENDING EMAIL] Dispatching Brevo OTP to {clean_email}")
     email_sent, delivery_msg = await send_brevo_email_otp(clean_email, user.name, otp)
+    logger.info(f"[/api/auth/register EMAIL FINISHED] in {(time.perf_counter() - t_email_start)*1000:.1f}ms | status={email_sent}")
+
     if not email_sent:
+        logger.error(f"[/api/auth/register FAILED] Brevo error for {clean_email}: {delivery_msg}")
+        # Invalidate the OTP record so user is not stuck
+        try:
+            await db.execute(
+                update(EmailOTPRecord)
+                .where(EmailOTPRecord.id == otp_record.id)
+                .values(is_used=True)
+            )
+            await db.commit()
+        except Exception:
+            pass
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=delivery_msg or "Unable to send verification code. Please try again."
         )
+
+    total_ms = (time.perf_counter() - t_start) * 1000
+    logger.info(f"[/api/auth/register SUCCESS] Completed in {total_ms:.1f}ms for {clean_email}")
 
     return {
         "success": True,
@@ -462,9 +489,11 @@ async def send_email_otp(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+    t_start = time.perf_counter()
     clean_email = validate_genuine_email(req.email)
     now_utc = datetime.now(timezone.utc)
     client_ip = request.client.host if request.client else "unknown"
+    logger.info(f"[/api/auth/send-email-otp -> START] Request for {clean_email}")
 
     result = await db.execute(select(User).where(User.email == clean_email))
     user = result.scalar_one_or_none()
@@ -535,15 +564,25 @@ async def send_email_otp(
         ip_address=client_ip
     )
     db.add(otp_record)
+
+    t_db_start = time.perf_counter()
     await db.commit()
+    logger.info(f"[/api/auth/send-email-otp DB COMMITTED] in {(time.perf_counter() - t_db_start)*1000:.1f}ms")
 
     user_name = user.name if user else "Creator"
+    t_email_start = time.perf_counter()
     email_sent, delivery_msg = await send_brevo_email_otp(clean_email, user_name, otp)
+    logger.info(f"[/api/auth/send-email-otp EMAIL FINISHED] in {(time.perf_counter() - t_email_start)*1000:.1f}ms | status={email_sent}")
+
     if not email_sent:
+        logger.error(f"[/api/auth/send-email-otp FAILED] {delivery_msg}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=delivery_msg or "Unable to send verification code. Please try again."
         )
+
+    total_ms = (time.perf_counter() - t_start) * 1000
+    logger.info(f"[/api/auth/send-email-otp SUCCESS] Completed in {total_ms:.1f}ms for {clean_email}")
 
     return {
         "success": True,

@@ -1,4 +1,5 @@
 import logging
+import time
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -129,108 +130,129 @@ def generate_otp_email_html(user_name: str, otp_code: str) -> str:
 </html>"""
 
 
-async def send_brevo_email_otp(to_email: str, user_name: str, otp_code: str) -> tuple[bool, str]:
-    """
-    Send real 6-digit email OTP using Brevo (Sendinblue) Transactional Email API.
-    Returns (True, success_message) or (False, error_reason).
-    Security: The raw OTP value is NEVER logged or leaked.
-    """
+async def _dispatch_brevo_http(to_email: str, user_name: str, otp_code: str, brevo_key: str) -> tuple[bool, str]:
+    """Execute Brevo HTTP POST with explicit timeouts and error parsing."""
+    t_start = time.perf_counter()
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "api-key": brevo_key,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+    sender_email = (settings.BREVO_SENDER_EMAIL or "noreply@clipcutter.ai").strip()
+    sender_name = (settings.BREVO_SENDER_NAME or "Clip_Cut").strip()
     subject = "Your Clip_Cut verification code"
     text_content = f"Your Clip_Cut verification code is: {otp_code}\n\nThis code expires in {settings.EMAIL_OTP_EXPIRY_MINUTES} minutes."
     html_content = generate_otp_email_html(user_name, otp_code)
 
-    # ── 1. Brevo Transactional Email API ──────────────────────────────
+    payload = {
+        "sender": {
+            "name": sender_name,
+            "email": sender_email
+        },
+        "to": [
+            {
+                "email": to_email,
+                "name": user_name or "Creator"
+            }
+        ],
+        "subject": subject,
+        "htmlContent": html_content,
+        "textContent": text_content
+    }
+
+    logger.info(f"[Brevo HTTP -> START] Request to Brevo API for {to_email} (sender: {sender_email})")
+    
+    timeout_config = httpx.Timeout(connect=4.0, read=5.0, write=4.0, pool=4.0)
+    async with httpx.AsyncClient(timeout=timeout_config) as client:
+        response = await client.post(url, headers=headers, json=payload)
+        elapsed_ms = (time.perf_counter() - t_start) * 1000
+        
+        logger.info(f"[Brevo HTTP <- FINISH] Status {response.status_code} in {elapsed_ms:.1f}ms for {to_email}")
+
+        if response.status_code in [200, 201, 202]:
+            logger.info(f"[Brevo HTTP SUCCESS] Message accepted by Brevo for {to_email}")
+            return True, f"6-digit verification code sent to {to_email} via Brevo."
+        elif response.status_code == 401:
+            logger.error(f"[Brevo HTTP 401 Unauthorized] Invalid API Key: {response.text}")
+            return False, f"Brevo API error: Invalid API key (HTTP 401). Response: {response.text}"
+        elif response.status_code == 403:
+            logger.error(f"[Brevo HTTP 403 Forbidden] Sender not verified: {response.text}")
+            return False, f"Brevo API error: Sender '{sender_email}' not verified (HTTP 403). Response: {response.text}"
+        elif response.status_code == 400:
+            logger.error(f"[Brevo HTTP 400 Bad Request] Invalid payload: {response.text}")
+            return False, f"Brevo API error: Bad request for {to_email} (HTTP 400). Response: {response.text}"
+        elif response.status_code == 429:
+            logger.error(f"[Brevo HTTP 429 Rate Limit]: {response.text}")
+            return False, "Brevo email rate limit exceeded. Please wait and try again."
+        else:
+            logger.error(f"[Brevo HTTP Error {response.status_code}]: {response.text}")
+            return False, f"Brevo delivery failed (Status {response.status_code}): {response.text}"
+
+
+async def send_brevo_email_otp(to_email: str, user_name: str, otp_code: str) -> tuple[bool, str]:
+    """
+    Send real 6-digit email OTP using Brevo (Sendinblue) Transactional Email API.
+    Enforces a hard 8.0-second total timeout so requests NEVER hang indefinitely.
+    Returns (True, success_message) or (False, error_reason).
+    Security: The raw OTP value is NEVER logged.
+    """
+    t_start = time.perf_counter()
     brevo_key = (settings.BREVO_API_KEY or "").strip()
+
+    # ── 1. Brevo Transactional Email API (Hard 8s Timeout) ────────────
     if brevo_key:
         try:
-            url = "https://api.brevo.com/v3/smtp/email"
-            headers = {
-                "api-key": brevo_key,
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
-            sender_email = (settings.BREVO_SENDER_EMAIL or "noreply@clipcutter.ai").strip()
-            sender_name = (settings.BREVO_SENDER_NAME or "Clip_Cut").strip()
-            
-            payload = {
-                "sender": {
-                    "name": sender_name,
-                    "email": sender_email
-                },
-                "to": [
-                    {
-                        "email": to_email,
-                        "name": user_name or "Creator"
-                    }
-                ],
-                "subject": subject,
-                "htmlContent": html_content,
-                "textContent": text_content
-            }
-
-            timeout_config = httpx.Timeout(connect=5.0, read=7.0, write=5.0, pool=5.0)
-            async with httpx.AsyncClient(timeout=timeout_config) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                
-                if response.status_code in [200, 201, 202]:
-                    logger.info(f"[Brevo Email API] Verification OTP dispatched successfully to {to_email}")
-                    return True, f"6-digit verification code sent to {to_email}."
-                elif response.status_code == 401:
-                    logger.error(f"[Brevo Email API 401] Invalid BREVO_API_KEY: {response.text}")
-                    return False, "Invalid Brevo API Key. Please check BREVO_API_KEY in server configuration."
-                elif response.status_code == 403:
-                    logger.error(f"[Brevo Email API 403] Sender not authorized: {response.text}")
-                    return False, f"Sender email '{sender_email}' is not verified in your Brevo account."
-                elif response.status_code == 400:
-                    logger.error(f"[Brevo Email API 400] Bad Request: {response.text}")
-                    return False, f"Brevo rejected email request for '{to_email}'."
-                elif response.status_code == 429:
-                    logger.error(f"[Brevo Email API 429] Rate limit: {response.text}")
-                    return False, "Brevo rate limit reached. Please wait a moment and try again."
-                else:
-                    logger.error(f"[Brevo Email API {response.status_code}] Error: {response.text}")
-                    return False, f"Brevo email delivery failed (Status {response.status_code})."
+            return await asyncio.wait_for(
+                _dispatch_brevo_http(to_email, user_name, otp_code, brevo_key),
+                timeout=8.0
+            )
+        except asyncio.TimeoutError:
+            elapsed_s = time.perf_counter() - t_start
+            logger.error(f"[Brevo Timeout] Total request timed out after {elapsed_s:.1f}s for {to_email}")
+            return False, "Brevo email delivery timed out after 8 seconds. Please try again."
         except httpx.TimeoutException:
-            logger.error("[Brevo Email API Timeout] Request timed out after 7 seconds")
-            return False, "Brevo email service timed out. Please try again."
+            logger.error(f"[Brevo HTTP Timeout] Connection/read timed out for {to_email}")
+            return False, "Brevo email service connection timed out. Please try again."
         except Exception as e:
-            logger.error(f"[Brevo Email API Exception] {e}")
-            return False, "Unable to send verification code via Brevo. Please try again."
+            logger.error(f"[Brevo Exception] {type(e).__name__}: {e}")
+            return False, f"Unable to dispatch email via Brevo ({type(e).__name__}: {e})"
 
-    # ── 2. SMTP Fallback (Non-blocking Threadpool) ─────────────────────
+    # ── 2. Explicit SMTP Fallback (Only if explicitly configured) ───────
     if settings.SMTP_USER and settings.SMTP_USER.strip() and settings.SMTP_PASSWORD and settings.SMTP_PASSWORD.strip():
         try:
             from_email = settings.SMTP_FROM_EMAIL or settings.SMTP_USER or "noreply@clipcutter.ai"
             from_name = settings.BREVO_SENDER_NAME or settings.SMTP_FROM_NAME or "Clip_Cut"
+            subject = "Your Clip_Cut verification code"
+            text_content = f"Your Clip_Cut verification code is: {otp_code}\n\nThis code expires in {settings.EMAIL_OTP_EXPIRY_MINUTES} minutes."
+            html_content = generate_otp_email_html(user_name, otp_code)
 
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
             msg["From"] = f"{from_name} <{from_email}>"
             msg["To"] = to_email
-
-            part1 = MIMEText(text_content, "plain", "utf-8")
-            part2 = MIMEText(html_content, "html", "utf-8")
-            msg.attach(part1)
-            msg.attach(part2)
+            msg.attach(MIMEText(text_content, "plain", "utf-8"))
+            msg.attach(MIMEText(html_content, "html", "utf-8"))
 
             def _send_smtp_sync():
-                with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=8) as server:
+                with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=6) as server:
                     server.ehlo()
                     server.starttls()
                     server.ehlo()
                     server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
                     server.sendmail(from_email, [to_email], msg.as_string())
 
-            await asyncio.to_thread(_send_smtp_sync)
-            logger.info(f"[SMTP Fallback] Verification OTP sent to {to_email}")
-            return True, f"Verification code sent to {to_email}."
+            await asyncio.wait_for(asyncio.to_thread(_send_smtp_sync), timeout=7.0)
+            logger.info(f"[SMTP Fallback SUCCESS] Verification OTP sent to {to_email}")
+            return True, f"Verification code sent to {to_email} via SMTP."
         except Exception as e:
             logger.error(f"[SMTP Fallback Error] {e}")
-            return False, "SMTP delivery failed. Please check server SMTP configuration."
+            return False, f"SMTP delivery failed: {e}"
 
     # ── 3. Dev / Staging Simulation Fallback ───────────────────────────
     if settings.DEBUG:
-        logger.info(f"[Dev Mode] Verification code generated for {to_email} (BREVO_API_KEY not configured in .env)")
+        logger.info(f"[Dev Simulation Mode] OTP generated for {to_email} (BREVO_API_KEY is not configured in .env)")
         return True, f"6-digit verification code generated for {to_email}."
 
-    return False, "BREVO_API_KEY is not configured in backend environment variables."
+    logger.error(f"[Brevo Configuration Missing] BREVO_API_KEY is not configured in backend environment variables.")
+    return False, "BREVO_API_KEY is not configured in server environment variables. Please add BREVO_API_KEY to .env."
