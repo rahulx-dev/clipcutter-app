@@ -107,7 +107,7 @@ async def _background_download(url: str, project_id: int):
             project = db_result.scalar_one_or_none()
             if project:
                 project.status = ProjectStatus.FAILED
-                project.error_message = f"Download failed: {str(e)}"
+                project.error_message = str(e)
                 project.progress_message = "Download failed"
                 await session.commit()
 

@@ -85,8 +85,8 @@ class User(Base):
     )
 
     # Relationships
-    subscriptions = relationship("Subscription", back_populates="user", lazy="select")
-    projects = relationship("Project", back_populates="user", lazy="select")
+    subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan", lazy="select")
+    projects = relationship("Project", back_populates="user", cascade="all, delete-orphan", lazy="select")
 
     def to_dict(self):
         return {

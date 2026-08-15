@@ -1,16 +1,31 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ShieldCheck, Zap, Loader } from 'lucide-react';
+import { X, ShieldCheck, Zap, Loader, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../App';
 
 export default function PricingModal({ isOpen, plan, onClose }) {
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const { token, refreshUser } = useAuth();
 
   if (!isOpen && !plan) return null;
 
-  const activePlan = plan || { id: 'BASE', name: 'Standard Plan', price: '$9.99/m' };
+  const activePlan = plan || { id: 'BASE', name: 'Creator Pack', price: '₹99/m' };
+
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
 
   const handlePayment = async () => {
     if (activePlan.id === 'FREE') {
@@ -20,7 +35,16 @@ export default function PricingModal({ isOpen, plan, onClose }) {
     }
 
     setLoading(true);
+    setErrorMsg('');
+
     try {
+      // 1. Ensure Razorpay SDK is available
+      const isLoaded = await loadRazorpayScript();
+      if (!isLoaded) {
+        throw new Error("Razorpay SDK could not be loaded. Please check your internet connection or disable adblockers.");
+      }
+
+      // 2. Request backend order creation
       const res = await axios.post('/api/billing/create-order', { 
         plan: activePlan.id,
         plan_type: activePlan.id 
@@ -30,16 +54,18 @@ export default function PricingModal({ isOpen, plan, onClose }) {
 
       const { order_id, amount, currency, key_id, subscription_id } = res.data;
 
+      // 3. Configure Razorpay checkout options
       const options = {
         key: key_id,
         amount: amount,
-        currency: currency,
+        currency: currency || "INR",
         name: "ClipCutter AI",
         description: `${activePlan.name} Subscription`,
         order_id: order_id,
         handler: async function (response) {
           try {
-            await axios.post('/api/billing/verify-payment', {
+            setLoading(true);
+            const verifyRes = await axios.post('/api/billing/verify-payment', {
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
@@ -48,27 +74,39 @@ export default function PricingModal({ isOpen, plan, onClose }) {
             }, {
               headers: { Authorization: `Bearer ${token}` }
             });
-            alert("Payment Successful! Credits have been added to your account.");
+
+            alert(`Payment Successful! ${verifyRes.data?.credits || ''} credits have been added to your account.`);
             if (refreshUser) refreshUser();
             onClose();
           } catch (err) {
-            alert("Payment verification failed. Please contact support.");
+            console.error("Payment verification error:", err);
+            setErrorMsg(err.response?.data?.detail || "Payment verification failed. Please contact support.");
+          } finally {
+            setLoading(false);
+          }
+        },
+        modal: {
+          ondismiss: function () {
+            setLoading(false);
           }
         },
         theme: {
-          color: "#ffffff"
+          color: "#b8f032"
         }
       };
 
-      if (window.Razorpay) {
-        const rzp = new window.Razorpay(options);
-        rzp.open();
-      } else {
-        alert("Razorpay payment gateway initialized. Please ensure internet connectivity.");
-      }
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (response) {
+        console.error('Razorpay payment failed:', response.error);
+        setErrorMsg(response.error?.description || "Payment was declined or cancelled.");
+        setLoading(false);
+      });
+      rzp.open();
+
     } catch (err) {
-      alert(err.response?.data?.detail || "Could not initiate payment order");
-    } finally {
+      console.error("Order creation error:", err);
+      const detail = err.response?.data?.detail || err.message || "Could not initiate payment order. Please try again.";
+      setErrorMsg(detail);
       setLoading(false);
     }
   };
@@ -89,7 +127,7 @@ export default function PricingModal({ isOpen, plan, onClose }) {
 
           <div className="flex justify-between items-center p-6 border-b border-white/[0.08]">
             <h2 className="text-base font-extrabold text-white">
-              Upgrade to <span className="text-white">{activePlan.name}</span>
+              Upgrade to <span className="text-[#b8f032]">{activePlan.name}</span>
             </h2>
             <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors cursor-pointer">
               <X className="w-5 h-5" />
@@ -97,6 +135,13 @@ export default function PricingModal({ isOpen, plan, onClose }) {
           </div>
 
           <div className="p-6 space-y-6">
+            {errorMsg && (
+              <div className="p-3.5 bg-red-500/15 border border-red-500/30 rounded-2xl flex items-start gap-2.5 text-xs text-red-200">
+                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                <span className="leading-snug">{errorMsg}</span>
+              </div>
+            )}
+
             <div className="p-4 bg-white/[0.04] border border-white/10 rounded-2xl flex items-center justify-between">
               <div>
                 <p className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Plan Selected</p>
@@ -110,12 +155,12 @@ export default function PricingModal({ isOpen, plan, onClose }) {
 
             <div className="space-y-2.5 text-xs text-gray-300">
               <div className="flex items-center gap-2">
-                <Zap className="w-4 h-4 text-white fill-white" />
-                <span>Zero watermark and full high definition export</span>
+                <Zap className="w-4 h-4 text-[#b8f032] fill-[#b8f032]" />
+                <span>Zero watermark and full 1080x1920 HD shorts export</span>
               </div>
               <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-white" />
-                <span>Priority graphics processing and 24/7 support</span>
+                <ShieldCheck className="w-4 h-4 text-[#b8f032]" />
+                <span>Secured by Razorpay • Instant account activation</span>
               </div>
             </div>
 
@@ -124,7 +169,7 @@ export default function PricingModal({ isOpen, plan, onClose }) {
               disabled={loading}
               className="w-full py-3.5 btn-premium-solid text-xs font-extrabold uppercase tracking-wider shadow-xl disabled:opacity-50 transition-all flex items-center justify-center cursor-pointer"
             >
-              {loading ? <Loader className="w-4 h-4 animate-spin text-black" /> : `Continue with ${activePlan.name}`}
+              {loading ? <Loader className="w-4 h-4 animate-spin text-black" /> : `Pay with Razorpay (${activePlan.price})`}
             </button>
           </div>
         </motion.div>
