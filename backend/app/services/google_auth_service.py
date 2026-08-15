@@ -26,6 +26,9 @@ def verify_google_id_token(token: str) -> dict:
     try:
         req = requests.Request()
         client_id = settings.GOOGLE_CLIENT_ID.strip() if settings.GOOGLE_CLIENT_ID else None
+        # Ignore placeholder template values
+        if client_id and ("your-google" in client_id.lower() or "clipcutter-google" in client_id.lower() or "placeholder" in client_id.lower()):
+            client_id = None
         
         # Verify token cryptographically
         id_info = id_token.verify_oauth2_token(token, req, client_id)

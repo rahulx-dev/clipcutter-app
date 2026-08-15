@@ -29,7 +29,7 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Center: Navigation Links Pill Group */}
+        {/* Center: Navigation Links Pill Group (Desktop) */}
         <nav className="hidden md:flex items-center space-x-1 bg-white/[0.04] p-1 rounded-full border border-white/10">
           <Link 
             to="/dashboard" 
@@ -63,7 +63,7 @@ export default function Navbar() {
           </Link>
         </nav>
 
-        {/* Right: Credits and Logout */}
+        {/* Right: Credits and Logout (Desktop) */}
         <div className="hidden md:flex items-center space-x-3 pr-1">
           <div className="flex items-center space-x-1.5 px-3.5 py-1 rounded-full bg-white/[0.05] border border-white/10 text-xs shadow-inner">
             <Zap className="w-3 h-3 text-[#b8f032] fill-[#b8f032]" />
@@ -80,11 +80,17 @@ export default function Navbar() {
           </button>
         </div>
 
-        {/* Mobile Menu Button */}
-        <div className="md:hidden flex items-center pr-1">
+        {/* Right: Mobile View (Shows Credits Pill + Menu Button) */}
+        <div className="md:hidden flex items-center space-x-2 pr-1">
+          {/* Mobile Credits Pill */}
+          <div className="flex items-center space-x-1 px-2.5 py-1 rounded-full bg-white/[0.08] border border-[#b8f032]/30 text-xs">
+            <Zap className="w-3 h-3 text-[#b8f032] fill-[#b8f032]" />
+            <span className="font-black text-[#b8f032] text-[11px]">{isAdmin ? '∞' : (user?.credits_remaining ?? 0)}</span>
+          </div>
+
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-1.5 rounded-full text-gray-300 hover:text-white cursor-pointer"
+            className="p-1.5 rounded-full text-gray-300 hover:text-white cursor-pointer bg-white/[0.04]"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -94,6 +100,15 @@ export default function Navbar() {
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
         <div className="absolute top-16 inset-x-4 bg-[#060a12]/95 backdrop-blur-2xl border border-white/15 rounded-3xl p-5 space-y-3 pointer-events-auto shadow-2xl md:hidden">
+          {/* Mobile Drawer Credits Display */}
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] border border-white/10 mb-2">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-[#b8f032] fill-[#b8f032]" />
+              <span className="text-xs font-semibold text-gray-300">Remaining Credits</span>
+            </div>
+            <span className="text-sm font-black text-[#b8f032]">{isAdmin ? 'Unlimited (∞)' : `${user?.credits_remaining ?? 0} Credits`}</span>
+          </div>
+
           <Link 
             to="/dashboard"
             onClick={() => setMobileMenuOpen(false)}

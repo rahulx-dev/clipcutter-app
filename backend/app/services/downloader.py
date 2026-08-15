@@ -7,7 +7,10 @@ import shutil
 import os
 
 async def download_youtube(url: str, output_dir: Path) -> dict:
-    """Download YouTube video with multi-tier anti-403 fallback clients."""
+    """
+    Download YouTube video with multi-tier anti-bot fallback clients.
+    Uses iOS & Android mobile app clients to bypass cloud datacenter bot verification.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     
     def _download():
@@ -19,24 +22,25 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
             'no_warnings': True,
             'geo_bypass': True,
             'nocheckcertificate': True,
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-            }
         }
 
-        # Attempt 1: Multi-client adaptive format
+        # Attempt 1: iOS Mobile Client (Highest success rate on cloud datacenter IPs)
         try:
-            opts_tier1 = {
+            opts_ios = {
                 **base_opts,
-                'format': 'best[ext=mp4]/bestvideo[height<=1080]+bestaudio/best',
+                'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio/best[height<=1080]/18/22/best',
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['android', 'ios', 'mweb', 'web']
+                        'player_client': ['ios'],
+                        'player_skip': ['webpage', 'configs', 'js']
                     }
+                },
+                'http_headers': {
+                    'User-Agent': 'com.google.ios.youtube/19.10.1 (iPhone14,3; U; CPU iOS 17_4 like Mac OS X; en_US)',
+                    'Accept-Language': 'en-US,en;q=0.9',
                 }
             }
-            with yt_dlp.YoutubeDL(opts_tier1) as ydl:
+            with yt_dlp.YoutubeDL(opts_ios) as ydl:
                 info = ydl.extract_info(url, download=True)
                 vid_id = info.get('id', '')
                 matched_file = _find_downloaded_file(output_dir, vid_id)
@@ -48,20 +52,24 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
                         'video_id': vid_id
                     }
         except Exception as e1:
-            print(f"[Downloader] Tier 1 download warning: {e1}. Trying robust progressive fallback...")
+            print(f"[Downloader] Tier 1 iOS client warning: {e1}. Trying Tier 2 Android client...")
 
-        # Attempt 2: Universal progressive stream fallback (Format 18 / 22 - never 403 throttled)
+        # Attempt 2: Android App Client
         try:
-            opts_tier2 = {
+            opts_android = {
                 **base_opts,
                 'format': '18/22/best[height<=720]/best',
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['android', 'mweb']
+                        'player_client': ['android'],
+                        'player_skip': ['webpage', 'configs']
                     }
+                },
+                'http_headers': {
+                    'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 14; en_US; Pixel 7 Pro Build/UQ1A.240205.004)',
                 }
             }
-            with yt_dlp.YoutubeDL(opts_tier2) as ydl:
+            with yt_dlp.YoutubeDL(opts_android) as ydl:
                 info = ydl.extract_info(url, download=True)
                 vid_id = info.get('id', '')
                 matched_file = _find_downloaded_file(output_dir, vid_id)
@@ -73,12 +81,17 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
                         'video_id': vid_id
                     }
         except Exception as e2:
-            print(f"[Downloader] Tier 2 fallback failed: {e2}")
+            print(f"[Downloader] Tier 2 Android client warning: {e2}. Trying Tier 3 TV Embedded...")
 
-        # Attempt 3: General web fallback
+        # Attempt 3: TV Embedded / Mobile Web client
         opts_tier3 = {
             **base_opts,
             'format': 'best',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['tv_embedded', 'mweb']
+                }
+            }
         }
         with yt_dlp.YoutubeDL(opts_tier3) as ydl:
             info = ydl.extract_info(url, download=True)

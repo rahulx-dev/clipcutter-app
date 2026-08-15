@@ -161,7 +161,8 @@ export default function Login() {
       login(res.data.access_token, res.data.user);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Google authentication failed. Please try again.');
+      console.error('Google login error detail:', err);
+      setError(err.response?.data?.detail || err.response?.data?.message || err.message || 'Google authentication failed. Please try again.');
     } finally {
       setLoading(false);
     }
