@@ -11,10 +11,26 @@ from app.core.config import settings
 
 logger = logging.getLogger("clipcutter.downloader")
 
+# Auto-register standard Deno installation paths into PATH for Render / Linux environments
+_extra_bin_dirs = [
+    Path.home() / ".deno" / "bin",
+    Path("/root/.deno/bin"),
+    Path("/home/render/.deno/bin"),
+    Path("/opt/render/.deno/bin"),
+    Path("/usr/local/bin"),
+]
+for _p in _extra_bin_dirs:
+    if _p.exists():
+        _p_str = str(_p.resolve())
+        _curr_path = os.environ.get("PATH", "")
+        if _p_str not in _curr_path:
+            os.environ["PATH"] = f"{_p_str}{os.pathsep}{_curr_path}"
+
 
 def _get_js_runtime_opts() -> dict:
     """
     Detect available JS runtime (Deno, Node.js) for yt-dlp EJS challenge execution.
+    Checks PATH and standard user installation directories.
     """
     deno_path = shutil.which("deno")
     if deno_path:
@@ -29,8 +45,8 @@ def _get_js_runtime_opts() -> dict:
 
 async def download_youtube(url: str, output_dir: Path) -> dict:
     """
-    Download YouTube video with EJS JS-runtime challenge execution
-    and multi-tier client fallback (Android -> iOS -> Web).
+    Download YouTube video using mobile client strategies (Android / Android VR / TV Embedded)
+    which bypass cloud datacenter bot verification and PO token requirements.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     temp_prefix = str(uuid.uuid4())[:8]
@@ -66,17 +82,17 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
         if settings.YOUTUBE_PROXY:
             base_opts["proxy"] = settings.YOUTUBE_PROXY
 
-        # Multi-tier extraction strategy
+        # Multi-tier extraction strategy — Android and TV clients bypass PO-token challenges on datacenters
         tiers = [
-            # Tier 1: Multi-client (Android + iOS + Web) with EJS
+            # Tier 1: Android Mobile Client
             {
-                "name": "Multi-Client (Android/iOS/Web)",
+                "name": "Android Mobile Client",
                 "opts": {
                     **base_opts,
                     "format": "18/22/best[height<=720]/best",
                     "extractor_args": {
                         "youtube": {
-                            "player_client": ["android", "ios", "web"]
+                            "player_client": ["android"]
                         }
                     },
                     "http_headers": {
@@ -85,32 +101,28 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
                     },
                 },
             },
-            # Tier 2: iOS Mobile Client
+            # Tier 2: TV Embedded Client
             {
-                "name": "iOS Mobile Client",
+                "name": "TV Embedded Client",
                 "opts": {
                     **base_opts,
                     "format": "18/22/best[height<=720]/best",
                     "extractor_args": {
                         "youtube": {
-                            "player_client": ["ios"]
+                            "player_client": ["tv_embedded", "android_vr"]
                         }
-                    },
-                    "http_headers": {
-                        "User-Agent": "com.google.ios.youtube/19.10.1 (iPhone14,3; U; CPU iOS 17_4 like Mac OS X; en_US)",
-                        "Accept-Language": "en-US,en;q=0.9",
                     },
                 },
             },
-            # Tier 3: Android Creator Client
+            # Tier 3: Primary Multi-Client with EJS
             {
-                "name": "Android Creator Client",
+                "name": "Primary Multi-Client",
                 "opts": {
                     **base_opts,
                     "format": "18/22/best[height<=720]/best",
                     "extractor_args": {
                         "youtube": {
-                            "player_client": ["android_creator"]
+                            "player_client": ["android", "ios", "web"]
                         }
                     },
                 },
