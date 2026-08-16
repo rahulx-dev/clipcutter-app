@@ -1,4 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+gsap.registerPlugin(ScrollTrigger);
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Plus, Video, PlayCircle, Loader, Scissors, CheckCircle, ArrowRight, 
@@ -12,6 +15,7 @@ import VideoUploader from '../components/VideoUploader';
 import Hero3DCanvas from '../components/Hero3DCanvas';
 
 export default function Dashboard() {
+  const containerRef = useRef(null);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isUploaderOpen, setIsUploaderOpen] = useState(false);
@@ -29,6 +33,26 @@ export default function Dashboard() {
   useEffect(() => {
     fetchProjects();
   }, []);
+
+  useEffect(() => {
+    if (loading || projects.length === 0) return;
+    
+    const ctx = gsap.context(() => {
+      gsap.from(".gsap-card", {
+        scrollTrigger: {
+          trigger: ".gsap-card",
+          start: "top bottom-=50",
+        },
+        opacity: 0,
+        y: 40,
+        stagger: 0.1,
+        duration: 0.6,
+        ease: "power2.out"
+      });
+    }, containerRef);
+
+    return () => ctx.revert();
+  }, [loading, projects.length]);
 
   // Cycle simulated hero caption words
   useEffect(() => {
@@ -87,7 +111,7 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="min-h-screen obsidian-mesh-bg text-white pb-24 overflow-hidden relative">
+    <div ref={containerRef} className="min-h-screen obsidian-mesh-bg text-white pb-24 overflow-hidden relative">
       
       {/* ── 3D HERO STAGE: Three.js Interactive Morphing Sphere & Starfield ─ */}
       <section className="relative min-h-[90vh] flex flex-col justify-between items-center text-center px-4 pt-10 pb-16 overflow-hidden">
@@ -435,7 +459,7 @@ export default function Dashboard() {
                 <div 
                   key={project.id}
                   onClick={() => navigate(`/project/${project.id}`)}
-                  className="card-linear-glass p-5 rounded-3xl cursor-pointer hover:border-white/30 transition-all duration-200 group flex flex-col justify-between relative"
+                  className="gsap-card card-linear-glass p-5 rounded-3xl cursor-pointer hover:border-white/30 transition-all duration-200 group flex flex-col justify-between relative will-change-transform"
                 >
                   <div>
                     <div className="flex justify-between items-start mb-4">

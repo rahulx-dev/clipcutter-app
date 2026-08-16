@@ -48,14 +48,67 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Clip Cutter API", version="3.0.0", lifespan=lifespan)
 
+import logging
+logger = logging.getLogger("clipcutter")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.DEBUG else [settings.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"],
-    allow_origin_regex=r"https?://.*",
+    allow_origins=["*"] if settings.DEBUG else [
+        settings.FRONTEND_URL,
+        "https://clipcutter-app.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Startup Diagnostics ───────────────────────────────────────────────
+if "change" in settings.JWT_SECRET.lower() or "replace" in settings.JWT_SECRET.lower():
+    logger.warning("⚠️  JWT_SECRET is using a placeholder value! Set a strong random secret in production.")
+if not settings.GOOGLE_CLIENT_ID or "your-google" in settings.GOOGLE_CLIENT_ID.lower() or "clipcutter-google" in settings.GOOGLE_CLIENT_ID.lower():
+    logger.warning("⚠️  GOOGLE_CLIENT_ID is not configured! Google login will not work.")
+if settings.DEBUG:
+    logger.info("🔧 Running in DEBUG mode — CORS allows all origins")
+else:
+    logger.info(f"🔒 Production mode — CORS restricted to: {settings.FRONTEND_URL}")
+
+try:
+    import yt_dlp
+    logger.info(f"📦 yt-dlp version: {yt_dlp.version.__version__}")
+except Exception as e:
+    logger.warning(f"⚠️ Could not probe yt-dlp: {e}")
+
+try:
+    import yt_dlp_ejs
+    logger.info("📦 yt-dlp-ejs: INSTALLED")
+except ImportError:
+    logger.warning("⚠️ yt-dlp-ejs: NOT INSTALLED")
+
+import shutil, subprocess
+deno_path = shutil.which("deno")
+node_path = shutil.which("node")
+if deno_path:
+    try:
+        deno_ver = subprocess.check_output([deno_path, "--version"], text=True).splitlines()[0]
+        logger.info(f"⚡ JS Runtime: {deno_ver} ({deno_path})")
+    except Exception:
+        logger.info(f"⚡ JS Runtime: Deno found at {deno_path}")
+elif node_path:
+    try:
+        node_ver = subprocess.check_output([node_path, "--version"], text=True).strip()
+        logger.info(f"⚡ JS Runtime: Node.js {node_ver} ({node_path})")
+    except Exception:
+        logger.info(f"⚡ JS Runtime: Node.js found at {node_path}")
+else:
+    logger.warning("⚠️ JS Runtime: NONE FOUND (Install Deno for yt-dlp challenge execution)")
+
+ffmpeg_path = shutil.which("ffmpeg")
+if ffmpeg_path:
+    logger.info(f"🎬 FFmpeg: FOUND ({ffmpeg_path})")
+else:
+    logger.warning("⚠️ FFmpeg: NOT FOUND in PATH")
 
 app.mount("/output", StaticFiles(directory=settings.OUTPUT_DIR), name="output")
 

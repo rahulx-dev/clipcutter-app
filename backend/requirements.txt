@@ -6,7 +6,8 @@ python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
 httpx
-yt-dlp
+yt-dlp[default]
+yt-dlp-ejs
 faster-whisper
 mediapipe
 opencv-python-headless

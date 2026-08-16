@@ -12,12 +12,21 @@ from app.core.config import settings
 logger = logging.getLogger("clipcutter.downloader")
 
 
+def _get_js_runtime_opts() -> dict:
+    """Detect available JS runtime (Deno, Node.js) for yt-dlp EJS challenge execution."""
+    deno_path = shutil.which('deno')
+    if deno_path:
+        return {'deno': {'path': deno_path}}
+    node_path = shutil.which('node')
+    if node_path:
+        return {'node': {'path': node_path}}
+    return {}
+
+
 async def download_youtube(url: str, output_dir: Path) -> dict:
     """
-    Download YouTube video with multi-tier mobile client fallback.
-    Tier 1 uses YouTube's official Android App client which bypasses datacenter IP blocks.
-    Tier 2 uses iOS App client.
-    Tier 3 uses Web/Creator client.
+    Download YouTube video with EJS JS-runtime challenge execution
+    and multi-tier client fallback.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     temp_prefix = str(uuid.uuid4())[:8]
@@ -31,10 +40,15 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
             'no_warnings': False,
             'geo_bypass': True,
             'nocheckcertificate': True,
-            'socket_timeout': 20,
+            'socket_timeout': 25,
             'retries': 3,
             'fragment_retries': 3,
         }
+
+        # Apply detected JS runtime for EJS challenge solving
+        js_runtimes = _get_js_runtime_opts()
+        if js_runtimes:
+            base_opts['js_runtimes'] = js_runtimes
 
         # Apply cookies if configured
         if settings.YOUTUBE_COOKIES_FILE and Path(settings.YOUTUBE_COOKIES_FILE).exists():
@@ -48,9 +62,17 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
         if settings.YOUTUBE_PROXY:
             base_opts['proxy'] = settings.YOUTUBE_PROXY
 
-        # Tier configurations
+        # Multi-tier extraction strategy
         tiers = [
-            # Tier 1: Android Mobile Client (Bypasses cloud datacenter bot challenge)
+            # Tier 1: Default / Android VR Player with EJS JS runtime
+            {
+                'name': 'Primary Client (with EJS)',
+                'opts': {
+                    **base_opts,
+                    'format': '18/22/best[height<=720]/best',
+                }
+            },
+            # Tier 2: Android Mobile Client
             {
                 'name': 'Android Mobile Client',
                 'opts': {
@@ -63,7 +85,7 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
                     }
                 }
             },
-            # Tier 2: iOS Mobile Client
+            # Tier 3: iOS Mobile Client
             {
                 'name': 'iOS Mobile Client',
                 'opts': {
@@ -76,7 +98,7 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
                     }
                 }
             },
-            # Tier 3: Android Creator Client
+            # Tier 4: Android Creator Client
             {
                 'name': 'Creator Client',
                 'opts': {
@@ -125,7 +147,7 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
             or "use --cookies" in err_str
             or "cookies-from-browser" in err_str
         ):
-            raise RuntimeError("YouTube is currently blocking automated downloads on cloud servers for this video. Please upload the video file directly from your device.")
+            raise RuntimeError("YouTube is currently blocking automated access from the processing server. Please upload the video directly.")
         elif "private video" in err_str or "video unavailable" in err_str or "this video has been removed" in err_str:
             raise RuntimeError("This YouTube video is unavailable or restricted. Please check the URL or upload the video directly.")
         elif "no video formats found" in err_str:

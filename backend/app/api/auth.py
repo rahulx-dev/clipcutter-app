@@ -328,6 +328,9 @@ async def google_oauth_login(
         if name and not user.name:
             user.name = name
         user.email_verified = True
+        # If user originally signed up via email and now links Google, update provider
+        if user.auth_provider == AuthProvider.EMAIL.value:
+            user.auth_provider = AuthProvider.GOOGLE.value
 
     await db.commit()
     await db.refresh(user)
@@ -700,7 +703,7 @@ async def login(
     if not user.email_verified and user.auth_provider == AuthProvider.EMAIL.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email first."
+            detail=f"Please verify your email first. A verification code can be sent to {clean_email}."
         )
         
     access_token = create_access_token(data={"sub": str(user.id)})

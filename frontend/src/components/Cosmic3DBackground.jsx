@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import gsap from 'gsap';
 
 export default function Cosmic3DBackground({ particleCount = 450, opacity = 0.45, speed = 0.05 }) {
   const mountRef = useRef(null);
@@ -9,8 +10,13 @@ export default function Cosmic3DBackground({ particleCount = 450, opacity = 0.45
     if (!container) return;
 
     const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x030508, 0.04);
     const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
     camera.position.z = 7;
+
+    const ctx = gsap.context(() => {
+      gsap.fromTo(container, { opacity: 0 }, { opacity: opacity, duration: 2, ease: "power2.out" });
+    });
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -74,16 +80,27 @@ export default function Cosmic3DBackground({ particleCount = 450, opacity = 0.45
     // 3. Animation Loop
     let animationFrameId;
     let clock = new THREE.Clock();
+    let lastRenderTime = 0;
+    const isMobile = window.innerWidth < 768;
+    const frameInterval = 1 / 30;
 
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
       const elapsedTime = clock.getElapsedTime();
+
+      if (isMobile) {
+        if (elapsedTime - lastRenderTime < frameInterval) return;
+        lastRenderTime = elapsedTime;
+      }
 
       mouseX += (targetX - mouseX) * 0.04;
       mouseY += (targetY - mouseY) * 0.04;
 
       particles.rotation.y = elapsedTime * speed * 0.4 + mouseX * 0.4;
       particles.rotation.x = elapsedTime * speed * 0.2 + mouseY * 0.4;
+
+      // Subtle particle size oscillation
+      material.size = 0.035 + Math.sin(elapsedTime * 2) * 0.01;
 
       renderer.render(scene, camera);
     };
@@ -109,6 +126,7 @@ export default function Cosmic3DBackground({ particleCount = 450, opacity = 0.45
       geometry.dispose();
       material.dispose();
       renderer.dispose();
+      ctx.revert();
     };
   }, [particleCount, opacity, speed]);
 

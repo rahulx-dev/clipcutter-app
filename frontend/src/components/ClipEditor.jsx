@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import gsap from 'gsap';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
@@ -13,6 +14,7 @@ import Cosmic3DBackground from './Cosmic3DBackground';
 import VideoUploader from './VideoUploader';
 
 export default function ClipEditor() {
+  const containerRef = useRef(null);
   const { id } = useParams();
   const navigate = useNavigate();
   const { token, refreshUser, isAdmin, user } = useAuth();
@@ -90,6 +92,41 @@ export default function ClipEditor() {
     }
     return () => clearInterval(interval);
   }, [processing, id, token]);
+
+  useEffect(() => {
+    let ctx;
+    if (!loading && containerRef.current) {
+      ctx = gsap.context(() => {
+        gsap.from(containerRef.current, {
+          opacity: 0,
+          y: 20,
+          duration: 0.8,
+          ease: "power2.out"
+        });
+      }, containerRef);
+    }
+    return () => {
+      if (ctx) ctx.revert();
+    };
+  }, [loading]);
+
+  useEffect(() => {
+    let ctx;
+    if (processing && containerRef.current) {
+      ctx = gsap.context(() => {
+        gsap.to(".gsap-progress-glow", {
+          boxShadow: "0 0 25px rgba(255,255,255,1)",
+          repeat: -1,
+          yoyo: true,
+          duration: 0.8,
+          ease: "sine.inOut"
+        });
+      }, containerRef);
+    }
+    return () => {
+      if (ctx) ctx.revert();
+    };
+  }, [processing]);
 
   const fetchProject = async () => {
     try {
@@ -285,7 +322,7 @@ export default function ClipEditor() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 relative">
+    <div ref={containerRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 relative will-change-transform">
       <Cosmic3DBackground />
 
       {/* Top Header Navigation */}
@@ -342,9 +379,9 @@ export default function ClipEditor() {
               <span className="text-white">{progressMsg || "Analyzing video stream..."}</span>
               <span className="text-white">{Math.round(progress)}%</span>
             </div>
-            <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+            <div className="w-full bg-white/10 rounded-full h-2 overflow-visible">
               <div 
-                className="bg-white h-2 rounded-full transition-all duration-500 shadow-[0_0_12px_rgba(255,255,255,0.8)]"
+                className="gsap-progress-glow bg-white h-2 rounded-full transition-all duration-500 shadow-[0_0_12px_rgba(255,255,255,0.8)]"
                 style={{ width: `${Math.max(5, progress)}%` }}
               ></div>
             </div>

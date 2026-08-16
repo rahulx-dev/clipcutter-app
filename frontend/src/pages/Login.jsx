@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import gsap from "gsap";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
@@ -38,6 +39,20 @@ export default function Login() {
   const [otpValues, setOtpValues] = useState(["", "", "", "", "", ""]);
   const [cooldown, setCooldown] = useState(0);
   const otpInputRefs = useRef([]);
+  const footerRef = useRef(null);
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.from(footerRef.current, {
+        y: 10,
+        opacity: 0,
+        delay: 0.8,
+        duration: 0.6,
+        ease: "power2.out"
+      });
+    });
+    return () => ctx.revert();
+  }, []);
 
   // UI / Feedback State
   const [loading, setLoading] = useState(false);
@@ -724,7 +739,7 @@ export default function Login() {
         )}
 
         {/* Security / Brevo Encryption Guarantee */}
-        <div className="mt-6 pt-4 border-t border-white/[0.08] flex items-center justify-center gap-1.5 text-[10px] text-gray-400 uppercase tracking-widest font-bold">
+        <div ref={footerRef} className="mt-6 pt-4 border-t border-white/[0.08] flex items-center justify-center gap-1.5 text-[10px] text-gray-400 uppercase tracking-widest font-bold will-change-transform">
           <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
           <span>Brevo Verified • 256-Bit Cryptographic Security</span>
         </div>

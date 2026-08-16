@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import gsap from 'gsap';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Scissors, LogOut, Menu, X, Zap, LayoutDashboard, CreditCard, Sparkles } from 'lucide-react';
 import { useAuth } from '../App';
@@ -8,6 +9,48 @@ export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navRef = useRef(null);
+  const innerNavRef = useRef(null);
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        navRef.current,
+        { y: -100, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" }
+      );
+    });
+
+    let isScrolled = false;
+    const handleScroll = () => {
+      if (!innerNavRef.current) return;
+      if (window.scrollY > 50 && !isScrolled) {
+        isScrolled = true;
+        gsap.to(innerNavRef.current, {
+          paddingTop: "0.25rem",
+          paddingBottom: "0.25rem",
+          backgroundColor: "rgba(6, 10, 18, 0.95)",
+          backdropFilter: "blur(32px)",
+          duration: 0.3
+        });
+      } else if (window.scrollY <= 50 && isScrolled) {
+        isScrolled = false;
+        gsap.to(innerNavRef.current, {
+          paddingTop: "0.5rem",
+          paddingBottom: "0.5rem",
+          backgroundColor: "rgba(6, 10, 18, 0.85)",
+          backdropFilter: "blur(24px)",
+          duration: 0.3
+        });
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      ctx.revert();
+    };
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -17,8 +60,8 @@ export default function Navbar() {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <header className="fixed top-4 inset-x-0 z-50 px-4 sm:px-6 flex justify-center pointer-events-none">
-      <div className="w-full max-w-4xl bg-[#060a12]/85 backdrop-blur-2xl rounded-full px-3 sm:px-5 py-2 flex items-center justify-between pointer-events-auto border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+    <header ref={navRef} className="fixed top-4 inset-x-0 z-50 px-4 sm:px-6 flex justify-center pointer-events-none will-change-transform">
+      <div ref={innerNavRef} className="w-full max-w-4xl bg-[#060a12]/85 backdrop-blur-2xl rounded-full px-3 sm:px-5 py-2 flex items-center justify-between pointer-events-auto border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
         {/* Left: Brand */}
         <Link to="/dashboard" className="flex items-center space-x-2.5 pl-2 group">
           <div className="w-7 h-7 rounded-full bg-white/[0.08] flex items-center justify-center border border-white/20 group-hover:border-[#b8f032] group-hover:shadow-[0_0_12px_rgba(184,240,50,0.4)] transition-all">

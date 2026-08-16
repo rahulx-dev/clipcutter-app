@@ -4,8 +4,10 @@
 !.env.example
 backend/.env
 frontend/.env
+.env.local
 
 # Python
+*.pyo
 __pycache__/
 *.py[cod]
 *$py.class
