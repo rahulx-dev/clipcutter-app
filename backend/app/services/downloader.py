@@ -11,7 +11,7 @@ from app.core.config import settings
 
 logger = logging.getLogger("clipcutter.downloader")
 
-# Auto-register standard Deno installation paths into PATH for Render / Linux environments
+# Auto-register standard Deno / Node installation paths into PATH for Render / Linux environments
 _extra_bin_dirs = [
     Path.home() / ".deno" / "bin",
     Path("/root/.deno/bin"),
@@ -43,10 +43,46 @@ def _get_js_runtime_opts() -> dict:
     return {}
 
 
+def _normalize_netscape_cookies(raw: str) -> str:
+    """
+    Ensure cookies are strictly formatted as a valid Netscape HTTP Cookie file.
+    Handles raw multiline, escaped \\n / \\t strings from cloud environment variables.
+    """
+    if not raw or not raw.strip():
+        return ""
+
+    content = raw.strip()
+    # Unescape literal backslash-n / backslash-t if passed from Render environment variables
+    if "\\n" in content and "\n" not in content:
+        content = content.replace("\\n", "\n").replace("\\t", "\t")
+
+    lines = []
+    has_header = any("netscape" in l.lower() for l in content.splitlines()[:3])
+    if not has_header:
+        lines.append("# Netscape HTTP Cookie File")
+
+    for line in content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            lines.append(line)
+            continue
+
+        # Split space/tab separated values and ensure tab format
+        parts = line.split()
+        if len(parts) >= 7 and "\t" not in line:
+            lines.append("\t".join(parts[:7]))
+        else:
+            lines.append(line)
+
+    return "\n".join(lines)
+
+
 async def download_youtube(url: str, output_dir: Path) -> dict:
     """
-    Download YouTube video using mobile client strategies (Android / Android VR / TV Embedded)
-    which bypass cloud datacenter bot verification and PO token requirements.
+    Download YouTube video with cookie authentication, EJS JS-runtime challenge execution,
+    and multi-tier client fallback (Authenticated Web -> Android -> TV Embedded).
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     temp_prefix = str(uuid.uuid4())[:8]
@@ -70,21 +106,45 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
         if js_runtimes:
             base_opts["js_runtimes"] = js_runtimes
 
-        # Apply cookies if configured
+        # Apply and normalize cookies
+        has_cookies = False
         if settings.YOUTUBE_COOKIES_FILE and Path(settings.YOUTUBE_COOKIES_FILE).exists():
             base_opts["cookiefile"] = str(Path(settings.YOUTUBE_COOKIES_FILE).resolve())
-        elif settings.YOUTUBE_COOKIES:
-            cookie_tmp = output_dir / f"cookies_{temp_prefix}.txt"
-            cookie_tmp.write_text(settings.YOUTUBE_COOKIES, encoding="utf-8")
-            base_opts["cookiefile"] = str(cookie_tmp)
+            has_cookies = True
+            logger.info(f"[Downloader] Using cookies from file: {settings.YOUTUBE_COOKIES_FILE}")
+        elif settings.YOUTUBE_COOKIES and settings.YOUTUBE_COOKIES.strip():
+            normalized = _normalize_netscape_cookies(settings.YOUTUBE_COOKIES)
+            if normalized:
+                cookie_tmp = output_dir / f"cookies_{temp_prefix}.txt"
+                cookie_tmp.write_text(normalized, encoding="utf-8")
+                base_opts["cookiefile"] = str(cookie_tmp)
+                has_cookies = True
+                logger.info(f"[Downloader] Using normalized Netscape cookies ({len(normalized.splitlines())} lines)")
 
         # Apply proxy if configured
         if settings.YOUTUBE_PROXY:
             base_opts["proxy"] = settings.YOUTUBE_PROXY
 
-        # Multi-tier extraction strategy — Android and TV clients bypass PO-token challenges on datacenters
-        tiers = [
-            # Tier 1: Android Mobile Client
+        # Multi-tier extraction strategy
+        # When cookies exist: Web / mweb client uses authenticated user session
+        # When cookies don't exist: Android / TV client extracts public stream
+        tiers = []
+
+        if has_cookies:
+            tiers.append({
+                "name": "Authenticated Web Session (Cookies)",
+                "opts": {
+                    **base_opts,
+                    "format": "18/22/best[height<=720]/best",
+                    "extractor_args": {
+                        "youtube": {
+                            "player_client": ["web", "mweb", "android"]
+                        }
+                    },
+                },
+            })
+
+        tiers.extend([
             {
                 "name": "Android Mobile Client",
                 "opts": {
@@ -101,7 +161,6 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
                     },
                 },
             },
-            # Tier 2: TV Embedded Client
             {
                 "name": "TV Embedded Client",
                 "opts": {
@@ -114,9 +173,8 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
                     },
                 },
             },
-            # Tier 3: Primary Multi-Client with EJS
             {
-                "name": "Primary Multi-Client",
+                "name": "Standard Multi-Client",
                 "opts": {
                     **base_opts,
                     "format": "18/22/best[height<=720]/best",
@@ -127,7 +185,7 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
                     },
                 },
             },
-        ]
+        ])
 
         last_error = None
         vid_id = ""
