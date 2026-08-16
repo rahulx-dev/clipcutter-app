@@ -43,6 +43,11 @@ async def download_youtube(url: str, output_dir: Path) -> dict:
             'socket_timeout': 25,
             'retries': 3,
             'fragment_retries': 3,
+          'extractor_args': {
+            'youtubepot-bgutilhttp': {
+             'base_url': 'http://127.0.0.1:4416'
+            }
+          },
         }
 
         # Apply detected JS runtime for EJS challenge solving
