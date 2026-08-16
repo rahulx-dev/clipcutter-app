@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && curl -fsSL https://deno.land/install.sh | sh \
     && mv /root/.deno/bin/deno /usr/local/bin/deno \
+    && deno --version \
     && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 # Copy requirements and install
