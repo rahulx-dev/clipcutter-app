@@ -69,9 +69,9 @@ class Settings(BaseSettings):
     OTP_RATE_LIMIT_MAX_REQUESTS: int = 3
 
     # ── Whisper (Transcription) ──────────────────────────────────────
-    WHISPER_MODEL: str = "small"
-    WHISPER_DEVICE: str = "cuda"
-    WHISPER_COMPUTE_TYPE: str = "float16"
+    WHISPER_MODEL: str = "tiny"
+    WHISPER_DEVICE: str = "cpu"
+    WHISPER_COMPUTE_TYPE: str = "int8"
 
     # ── Ollama (LLM Metadata) ────────────────────────────────────────
     OLLAMA_BASE_URL: str = "http://localhost:11434"

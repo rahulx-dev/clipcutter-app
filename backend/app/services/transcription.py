@@ -28,10 +28,11 @@ def get_whisper_model():
         except Exception as e:
             print(f"[Whisper] CUDA initialization failed ({e}). Falling back to CPU...")
 
-    # CPU fallback
-    print(f"[Whisper] Loading model '{settings.WHISPER_MODEL}' on CPU (int8)...")
+    # CPU fallback (Ultra-fast tiny model ~39MB, minimal RAM for Render)
+    model_name = settings.WHISPER_MODEL if settings.WHISPER_MODEL in ["tiny", "base"] else "tiny"
+    print(f"[Whisper] Loading model '{model_name}' on CPU (int8)...")
     _cached_model = WhisperModel(
-        settings.WHISPER_MODEL,
+        model_name,
         device="cpu",
         compute_type="int8"
     )
@@ -39,7 +40,7 @@ def get_whisper_model():
     return _cached_model
 
 
-def extract_audio(video_path: str, output_dir: Path, max_duration: int = 720) -> str:
+def extract_audio(video_path: str, output_dir: Path, max_duration: int = 360) -> str:
     """Extract 16kHz mono WAV audio from video using FFmpeg (capped to max_duration for fast viral highlight extraction)."""
     video_name = Path(video_path).stem
     output_path = output_dir / f"{video_name}.wav"
@@ -47,7 +48,7 @@ def extract_audio(video_path: str, output_dir: Path, max_duration: int = 720) ->
     cmd = [
         settings.FFMPEG_PATH,
         '-i', str(video_path),
-        '-t', str(max_duration),  # Transcribe first 12 mins for instant viral extraction
+        '-t', str(max_duration),  # Transcribe first 6 mins for fast highlight extraction
         '-vn',
         '-acodec', 'pcm_s16le',
         '-ar', '16000',

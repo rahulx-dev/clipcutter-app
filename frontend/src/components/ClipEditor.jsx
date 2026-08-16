@@ -87,6 +87,10 @@ export default function ClipEditor() {
           }
         } catch (err) {
           console.error("Status polling error", err);
+          if (err.response?.status === 404) {
+            setProcessing(false);
+            setLoading(false);
+          }
         }
       }, 2000);
     }
